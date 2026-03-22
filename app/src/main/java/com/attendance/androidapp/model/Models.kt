@@ -1,0 +1,122 @@
+package com.attendance.androidapp.model
+
+import java.time.Instant
+
+data class LoginRequestBody(
+    val employeeCode: String,
+    val password: String,
+    val deviceId: String,
+    val deviceName: String
+)
+
+data class LoginResponseBody(
+    val accessToken: String?,
+    val tokenType: String?,
+    val employeeId: Long?,
+    val employeeCode: String?,
+    val employeeName: String?,
+    val companyName: String?,
+    val role: String?,
+    val accessTokenExpiresAt: String?
+)
+
+data class ErrorResponseBody(
+    val status: Int?,
+    val error: String?,
+    val message: String?
+)
+
+data class CompanySettingResponseBody(
+    val companyId: Long?,
+    val companyName: String?,
+    val latitude: Double?,
+    val longitude: Double?,
+    val allowedRadiusMeters: Int?,
+    val lateAfterTime: String?
+)
+
+data class TodayAttendanceResponseBody(
+    val checkedIn: Boolean?,
+    val attendanceDate: String?,
+    val checkInTime: String?,
+    val checkOutTime: String?,
+    val status: String?,
+    val companyName: String?
+)
+
+data class AttendanceActionRequestBody(
+    val latitude: Double,
+    val longitude: Double,
+    val accuracyMeters: Double,
+    val capturedAt: String
+)
+
+data class CheckInResponseBody(
+    val checkInTime: String?,
+    val late: Boolean?,
+    val message: String?
+)
+
+data class CheckOutResponseBody(
+    val checkOutTime: String?,
+    val checkedOutAt: String?,
+    val status: String?,
+    val message: String?
+)
+
+data class AuthSession(
+    val token: String,
+    val tokenType: String,
+    val expiresAt: String,
+    val user: UserInfo
+) {
+    fun isExpired(): Boolean = runCatching {
+        Instant.parse(expiresAt).isBefore(Instant.now())
+    }.getOrDefault(true)
+}
+
+data class UserInfo(
+    val id: Long?,
+    val name: String,
+    val employeeCode: String,
+    val companyName: String?,
+    val role: String?
+)
+
+data class CompanySetting(
+    val companyId: Long? = null,
+    val companyName: String = "OpenAI Seoul Office",
+    val latitude: Double = 37.5665,
+    val longitude: Double = 126.9780,
+    val allowedRadiusMeters: Int = 100,
+    val lateAfterTime: String? = null
+)
+
+data class TodayAttendanceStatus(
+    val checkedInAt: String? = null,
+    val checkedOutAt: String? = null,
+    val attendanceDate: String? = null,
+    val status: String? = null,
+    val companyName: String? = null
+)
+
+data class UiLocation(
+    val latitude: Double,
+    val longitude: Double,
+    val accuracyMeters: Double,
+    val capturedAt: String
+)
+
+data class AppUiState(
+    val employeeCode: String = "EMP001",
+    val password: String = "password1234",
+    val authSession: AuthSession? = null,
+    val companySetting: CompanySetting = CompanySetting(),
+    val attendanceStatus: TodayAttendanceStatus = TodayAttendanceStatus(),
+    val currentLocation: UiLocation? = null,
+    val errorMessage: String? = null,
+    val loadingLogin: Boolean = false,
+    val loadingLocation: Boolean = false,
+    val submittingAttendance: Boolean = false,
+    val locationPermissionGranted: Boolean = false
+)
