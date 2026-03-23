@@ -633,7 +633,7 @@ private fun LoginScreen(
         ) {
             Column(modifier = Modifier.padding(24.dp)) {
                 Text(
-                    text = "출퇴근 체크",
+                    text = "코운BIZ",
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.ExtraBold,
                     color = Color(0xFF172033)
