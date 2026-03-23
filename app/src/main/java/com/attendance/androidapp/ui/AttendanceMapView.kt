@@ -41,7 +41,7 @@ fun AttendanceMapView(
                 setTileSource(TileSourceFactory.MAPNIK)
                 setMultiTouchControls(true)
                 setBuiltInZoomControls(false)
-                controller.setZoom(17.0)
+                controller.setZoom(15.5)
             }
         },
         update = { mapView ->
@@ -81,26 +81,26 @@ fun AttendanceMapView(
                 val longitudeGap = kotlin.math.abs(companyPoint.longitude - currentPoint.longitude)
 
                 if (latitudeGap < 0.00001 && longitudeGap < 0.00001) {
-                    mapView.controller.setZoom(17.0)
+                    mapView.controller.setZoom(15.5)
                     mapView.controller.setCenter(currentPoint)
                 } else {
                     runCatching {
                         val boundingBox = BoundingBox.fromGeoPointsSafe(listOf(companyPoint, currentPoint))
                         mapView.post {
                             runCatching {
-                                mapView.zoomToBoundingBox(boundingBox, true, 160)
+                                mapView.zoomToBoundingBox(boundingBox, true, 260)
                             }.onFailure {
-                                mapView.controller.setZoom(16.0)
+                                mapView.controller.setZoom(15.0)
                                 mapView.controller.setCenter(currentPoint)
                             }
                         }
                     }.onFailure {
-                        mapView.controller.setZoom(16.0)
+                        mapView.controller.setZoom(15.0)
                         mapView.controller.setCenter(currentPoint)
                     }
                 }
             } else {
-                mapView.controller.setZoom(17.0)
+                mapView.controller.setZoom(15.5)
                 mapView.controller.setCenter(companyPoint)
             }
 
