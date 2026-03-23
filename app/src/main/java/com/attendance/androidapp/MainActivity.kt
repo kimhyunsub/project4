@@ -11,6 +11,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,12 +27,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -43,10 +49,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
@@ -59,6 +70,7 @@ import com.attendance.androidapp.location.LocationTracker
 import com.attendance.androidapp.model.AppUiState
 import com.attendance.androidapp.model.AttendanceActionRequestBody
 import com.attendance.androidapp.model.AuthSession
+import com.attendance.androidapp.model.ChangePasswordRequestBody
 import com.attendance.androidapp.model.CompanySetting
 import com.attendance.androidapp.model.LoginRequestBody
 import com.attendance.androidapp.model.TodayAttendanceStatus
@@ -77,6 +89,8 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeParseException
+import android.content.Intent
+import android.net.Uri
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -130,9 +144,12 @@ class AttendanceViewModel(
     private val sessionStore: SessionStore,
     private val deviceName: String
 ) : ViewModel() {
+    private val savedEmployeeCode = sessionStore.loadSavedEmployeeCode()
     private val _uiState = MutableStateFlow(
         AppUiState(
-            authSession = sessionStore.loadSession()
+            authSession = sessionStore.loadSession(),
+            employeeCode = savedEmployeeCode,
+            rememberEmployeeCode = savedEmployeeCode.isNotBlank()
         )
     )
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
@@ -150,6 +167,27 @@ class AttendanceViewModel(
 
     fun updatePassword(value: String) {
         _uiState.update { it.copy(password = value) }
+    }
+
+    fun updateRememberEmployeeCode(checked: Boolean) {
+        if (!checked) {
+            sessionStore.clearEmployeeCode()
+        } else {
+            val employeeCode = _uiState.value.employeeCode.trim()
+            if (employeeCode.isNotBlank()) {
+                sessionStore.saveEmployeeCode(employeeCode)
+            }
+        }
+
+        _uiState.update { it.copy(rememberEmployeeCode = checked) }
+    }
+
+    fun updateNewPassword(value: String) {
+        _uiState.update { it.copy(newPassword = value) }
+    }
+
+    fun updateConfirmPassword(value: String) {
+        _uiState.update { it.copy(confirmPassword = value) }
     }
 
     fun updateLocationPermission(granted: Boolean) {
@@ -188,7 +226,11 @@ class AttendanceViewModel(
             it.copy(
                 authSession = null,
                 attendanceStatus = TodayAttendanceStatus(),
-                errorMessage = null
+                errorMessage = null,
+                password = "",
+                newPassword = "",
+                confirmPassword = "",
+                showCheckOutConfirm = false
             )
         }
     }
@@ -216,20 +258,32 @@ class AttendanceViewModel(
                         name = response.employeeName ?: "사용자",
                         employeeCode = response.employeeCode ?: state.employeeCode.trim(),
                         companyName = response.companyName,
-                        role = response.role
+                        role = response.role,
+                        passwordChangeRequired = response.passwordChangeRequired == true
                     )
                 )
                 sessionStore.saveSession(session)
+
+                if (state.rememberEmployeeCode) {
+                    sessionStore.saveEmployeeCode(state.employeeCode)
+                } else {
+                    sessionStore.clearEmployeeCode()
+                }
 
                 _uiState.update {
                     it.copy(
                         authSession = session,
                         loadingLogin = false,
+                        password = "",
+                        newPassword = "",
+                        confirmPassword = "",
                         attendanceStatus = TodayAttendanceStatus(companyName = session.user.companyName),
                         companySetting = it.companySetting.copy(companyName = session.user.companyName ?: it.companySetting.companyName)
                     )
                 }
-                refreshAuthenticatedData()
+                if (!session.user.passwordChangeRequired) {
+                    refreshAuthenticatedData()
+                }
             } catch (exception: HttpException) {
                 _uiState.update {
                     it.copy(
@@ -248,11 +302,98 @@ class AttendanceViewModel(
         }
     }
 
+    fun changePassword() {
+        val state = _uiState.value
+        val session = state.authSession ?: return
+
+        if (state.newPassword.length < 8) {
+            _uiState.update { it.copy(errorMessage = "새 비밀번호는 8자 이상이어야 합니다.") }
+            return
+        }
+
+        if (state.newPassword != state.confirmPassword) {
+            _uiState.update { it.copy(errorMessage = "새 비밀번호 확인이 일치하지 않습니다.") }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(changingPassword = true, errorMessage = null) }
+            try {
+                val response = api.changePassword(
+                    authorization = "Bearer ${session.token}",
+                    request = ChangePasswordRequestBody(
+                        currentPassword = null,
+                        newPassword = state.newPassword
+                    )
+                )
+
+                val updatedSession = session.copy(
+                    user = session.user.copy(passwordChangeRequired = false)
+                )
+                sessionStore.saveSession(updatedSession)
+
+                _uiState.update {
+                    it.copy(
+                        authSession = updatedSession,
+                        changingPassword = false,
+                        newPassword = "",
+                        confirmPassword = "",
+                        password = "",
+                        errorMessage = response.message ?: "비밀번호가 변경되었습니다."
+                    )
+                }
+                refreshAuthenticatedData()
+            } catch (exception: HttpException) {
+                _uiState.update {
+                    it.copy(
+                        changingPassword = false,
+                        errorMessage = exception.asApiMessage("비밀번호 변경에 실패했습니다.")
+                    )
+                }
+            } catch (_: Exception) {
+                _uiState.update {
+                    it.copy(
+                        changingPassword = false,
+                        errorMessage = "비밀번호 변경에 실패했습니다."
+                    )
+                }
+            }
+        }
+    }
+
+    fun backToLoginFromPasswordChange() {
+        sessionStore.clearSession()
+        _uiState.update {
+            it.copy(
+                authSession = null,
+                password = "",
+                newPassword = "",
+                confirmPassword = "",
+                attendanceStatus = TodayAttendanceStatus(companyName = it.companySetting.companyName),
+                errorMessage = null
+            )
+        }
+    }
+
     fun checkIn() {
         submitAttendanceAction(isCheckIn = true)
     }
 
-    fun checkOut() {
+    fun requestCheckOut() {
+        val state = _uiState.value
+        if (state.currentLocation == null) {
+            _uiState.update { it.copy(errorMessage = "현재 위치를 아직 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.") }
+            return
+        }
+        _uiState.update { it.copy(showCheckOutConfirm = true) }
+    }
+
+    fun dismissCheckOutConfirm() {
+        _uiState.update { it.copy(showCheckOutConfirm = false) }
+    }
+
+    fun confirmCheckOut() {
+        _uiState.update { it.copy(showCheckOutConfirm = false) }
         submitAttendanceAction(isCheckIn = false)
     }
 
@@ -382,7 +523,8 @@ class AttendanceViewModel(
             latitude = latitude ?: 37.5665,
             longitude = longitude ?: 126.9780,
             allowedRadiusMeters = allowedRadiusMeters ?: 100,
-            lateAfterTime = lateAfterTime
+            lateAfterTime = lateAfterTime,
+            noticeMessage = noticeMessage.orEmpty()
         )
     }
 }
@@ -408,14 +550,18 @@ private fun AttendanceApp(viewModel: AttendanceViewModel) {
         viewModel.updateLocationPermission(hasLocationPermission)
     }
 
-    LaunchedEffect(uiState.authSession != null, uiState.locationPermissionGranted) {
-        if (uiState.authSession != null && !uiState.locationPermissionGranted) {
+    LaunchedEffect(uiState.authSession != null, uiState.locationPermissionGranted, uiState.authSession?.user?.passwordChangeRequired) {
+        if (uiState.authSession != null &&
+            uiState.authSession?.user?.passwordChangeRequired != true &&
+            !uiState.locationPermissionGranted) {
             permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
         }
     }
 
-    DisposableEffect(uiState.authSession != null, uiState.locationPermissionGranted) {
-        if (uiState.authSession != null && uiState.locationPermissionGranted) {
+    DisposableEffect(uiState.authSession != null, uiState.locationPermissionGranted, uiState.authSession?.user?.passwordChangeRequired) {
+        if (uiState.authSession != null &&
+            uiState.authSession?.user?.passwordChangeRequired != true &&
+            uiState.locationPermissionGranted) {
             viewModel.onLocationLoading(true)
             locationTracker.start(
                 onLocation = viewModel::updateCurrentLocation,
@@ -435,14 +581,25 @@ private fun AttendanceApp(viewModel: AttendanceViewModel) {
             state = uiState,
             onEmployeeCodeChange = viewModel::updateEmployeeCode,
             onPasswordChange = viewModel::updatePassword,
+            onRememberEmployeeCodeChange = viewModel::updateRememberEmployeeCode,
             onLogin = viewModel::login
+        )
+    } else if (uiState.authSession?.user?.passwordChangeRequired == true) {
+        PasswordChangeScreen(
+            state = uiState,
+            onNewPasswordChange = viewModel::updateNewPassword,
+            onConfirmPasswordChange = viewModel::updateConfirmPassword,
+            onSubmit = viewModel::changePassword,
+            onBack = viewModel::backToLoginFromPasswordChange
         )
     } else {
         AttendanceScreen(
             state = uiState,
             onRetryPermission = { permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION) },
             onCheckIn = viewModel::checkIn,
-            onCheckOut = viewModel::checkOut,
+            onCheckOut = viewModel::requestCheckOut,
+            onDismissCheckOutConfirm = viewModel::dismissCheckOutConfirm,
+            onConfirmCheckOut = viewModel::confirmCheckOut,
             onClearError = viewModel::clearError,
             onLogout = viewModel::logout
         )
@@ -454,6 +611,7 @@ private fun LoginScreen(
     state: AppUiState,
     onEmployeeCodeChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
+    onRememberEmployeeCodeChange: (Boolean) -> Unit,
     onLogin: () -> Unit
 ) {
     Column(
@@ -508,12 +666,25 @@ private fun LoginScreen(
                 OutlinedTextField(
                     value = state.password,
                     onValueChange = onPasswordChange,
-                    label = { Text("비밀번호") },
+                    label = { Text("비밀번호 (첫 로그인 직원은 비워두세요)") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     visualTransformation = PasswordVisualTransformation()
                 )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onRememberEmployeeCodeChange(!state.rememberEmployeeCode) },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = state.rememberEmployeeCode,
+                        onCheckedChange = onRememberEmployeeCodeChange
+                    )
+                    Text("아이디 저장", color = Color(0xFF475569))
+                }
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(
                     onClick = onLogin,
@@ -537,11 +708,111 @@ private fun LoginScreen(
 }
 
 @Composable
+private fun PasswordChangeScreen(
+    state: AppUiState,
+    onNewPasswordChange: (String) -> Unit,
+    onConfirmPasswordChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+    onBack: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFFF3F6FB))
+            .safeDrawingPadding()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.Center
+    ) {
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = Color.White,
+            tonalElevation = 2.dp
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Text(
+                    text = "비밀번호 변경",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color(0xFF172033)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "처음 로그인한 직원은 새 비밀번호를 먼저 설정해야 합니다. 변경이 끝나면 그다음부터는 새 비밀번호로 로그인합니다.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFF5A657A)
+                )
+                if (!state.errorMessage.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Surface(
+                        color = Color(0xFFFFF1F2),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Text(
+                            text = state.errorMessage.orEmpty(),
+                            color = Color(0xFFBE123C),
+                            modifier = Modifier.padding(14.dp),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                OutlinedTextField(
+                    value = state.newPassword,
+                    onValueChange = onNewPasswordChange,
+                    label = { Text("새 비밀번호 (8자 이상)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    visualTransformation = PasswordVisualTransformation()
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = state.confirmPassword,
+                    onValueChange = onConfirmPasswordChange,
+                    label = { Text("새 비밀번호 확인") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    visualTransformation = PasswordVisualTransformation()
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(
+                    onClick = onSubmit,
+                    enabled = !state.changingPassword,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1463FF))
+                ) {
+                    if (state.changingPassword) {
+                        CircularProgressIndicator(
+                            color = Color.White,
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text("비밀번호 변경")
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedButton(
+                    onClick = onBack,
+                    enabled = !state.changingPassword,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("뒤로가기", color = Color(0xFF475569))
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun AttendanceScreen(
     state: AppUiState,
     onRetryPermission: () -> Unit,
     onCheckIn: () -> Unit,
     onCheckOut: () -> Unit,
+    onDismissCheckOutConfirm: () -> Unit,
+    onConfirmCheckOut: () -> Unit,
     onClearError: () -> Unit,
     onLogout: () -> Unit
 ) {
@@ -570,14 +841,7 @@ private fun AttendanceScreen(
         currentLocation.accuracyMeters <= 100 &&
         distance <= companySetting.allowedRadiusMeters
 
-    val canCheckOut = state.authSession != null &&
-        effectiveAttendanceStatus.checkedInAt != null &&
-        effectiveAttendanceStatus.checkedOutAt == null &&
-        !state.submittingAttendance &&
-        currentLocation != null &&
-        distance != null &&
-        currentLocation.accuracyMeters <= 100 &&
-        distance <= companySetting.allowedRadiusMeters
+    val canCheckOut = state.authSession != null && !state.submittingAttendance
 
     Column(
         modifier = Modifier
@@ -585,6 +849,24 @@ private fun AttendanceScreen(
             .background(Color(0xFFEEF3FB))
             .safeDrawingPadding()
     ) {
+        if (state.showCheckOutConfirm) {
+            AlertDialog(
+                onDismissRequest = onDismissCheckOutConfirm,
+                title = { Text("퇴근 확인") },
+                text = { Text("지금 퇴근 처리하시겠어요?") },
+                confirmButton = {
+                    TextButton(onClick = onConfirmCheckOut) {
+                        Text("퇴근하기", color = Color(0xFF1463FF))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = onDismissCheckOutConfirm) {
+                        Text("취소")
+                    }
+                }
+            )
+        }
+
         if (!state.errorMessage.isNullOrBlank()) {
             Box(
                 modifier = Modifier
@@ -663,7 +945,7 @@ private fun AttendanceScreen(
                         Text("위치 권한이 필요합니다.", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "권한을 허용하면 회사 반경 안에서만 출근과 퇴근 버튼이 활성화됩니다.",
+                            text = "권한을 허용하면 회사 반경 안에서만 출근 버튼이 활성화됩니다.",
                             textAlign = TextAlign.Center,
                             color = Color(0xFF5C677B)
                         )
@@ -701,24 +983,12 @@ private fun AttendanceScreen(
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp, vertical = 20.dp)
             ) {
-                Text("오늘 상태", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("공지사항", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = when {
-                        effectiveAttendanceStatus.checkedOutAt != null -> "오늘 퇴근까지 완료되었습니다."
-                        effectiveAttendanceStatus.checkedInAt != null -> "출근 완료. 회사 반경 안에서 정확한 위치가 확인되면 퇴근 버튼이 활성화됩니다."
-                        else -> "회사 반경 안에서 정확한 위치가 확인되면 출근 버튼이 활성화됩니다."
-                    },
-                    color = Color(0xFF536076)
+                NoticeContent(
+                    noticeMessage = companySetting.noticeMessage,
+                    fallbackMessage = "등록된 공지사항이 없습니다."
                 )
-                Spacer(modifier = Modifier.height(12.dp))
-                DetailLine("기준 위치", state.attendanceStatus.companyName ?: companySetting.companyName)
-                DetailLine("상태", effectiveAttendanceStatus.status ?: "-")
-                DetailLine("근무일", effectiveAttendanceStatus.attendanceDate ?: nowInSeoul.toLocalDate().toString())
-                DetailLine("위치 정확도", currentLocation?.accuracyMeters?.let { "약 ${it.toInt()}m" } ?: "-")
-                DetailLine("로그인 유지 만료", formatDate(state.authSession?.expiresAt))
-                DetailLine("오늘 출근", formatTime(effectiveAttendanceStatus.checkedInAt))
-                DetailLine("오늘 퇴근", formatTime(effectiveAttendanceStatus.checkedOutAt))
 
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(
@@ -740,7 +1010,7 @@ private fun AttendanceScreen(
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F172A))
                 ) {
-                    if (state.submittingAttendance && effectiveAttendanceStatus.checkedInAt != null && effectiveAttendanceStatus.checkedOutAt == null) {
+                    if (state.submittingAttendance && effectiveAttendanceStatus.checkedInAt != null) {
                         CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                     } else {
                         Text("퇴근하기")
@@ -757,6 +1027,147 @@ private fun AttendanceScreen(
             }
         }
     }
+}
+
+@Composable
+private fun NoticeContent(noticeMessage: String, fallbackMessage: String) {
+    val context = LocalContext.current
+    val lines = noticeMessage.lines().map { it.trimEnd() }.filter { it.trim().isNotEmpty() }
+
+    if (lines.isEmpty()) {
+        Text(fallbackMessage, color = Color(0xFF59657A))
+        return
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        lines.forEach { line ->
+            when {
+                line.startsWith("## ") -> {
+                    Text(
+                        text = line.removePrefix("## ").trim(),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFF172033)
+                    )
+                }
+
+                line.startsWith("- ") -> {
+                    Row(verticalAlignment = Alignment.Top) {
+                        Text(
+                            text = "•",
+                            color = Color(0xFF1463FF),
+                            fontWeight = FontWeight.ExtraBold,
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
+                        NoticeText(
+                            text = line.removePrefix("- ").trim(),
+                            onOpenLink = { url ->
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                            }
+                        )
+                    }
+                }
+
+                else -> {
+                    NoticeText(
+                        text = line.trim(),
+                        onOpenLink = { url ->
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NoticeText(text: String, onOpenLink: (String) -> Unit) {
+    val annotated = buildNoticeAnnotatedString(text)
+
+    ClickableText(
+        text = annotated,
+        style = MaterialTheme.typography.bodyMedium.copy(color = Color(0xFF59657A)),
+        onClick = { offset ->
+            annotated
+                .getStringAnnotations(tag = "URL", start = offset, end = offset)
+                .firstOrNull()
+                ?.let { onOpenLink(it.item) }
+        }
+    )
+}
+
+private fun buildNoticeAnnotatedString(text: String): AnnotatedString {
+    val pattern = Regex("""\{color:([^}]+)\}(.+?)\{/color\}|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|\*\*(.+?)\*\*""")
+
+    return buildAnnotatedString {
+        var lastIndex = 0
+
+        pattern.findAll(text).forEach { match ->
+            if (match.range.first > lastIndex) {
+                append(text.substring(lastIndex, match.range.first))
+            }
+
+            when {
+                match.groups[1] != null && match.groups[2] != null -> {
+                    withStyle(
+                        SpanStyle(color = parseNoticeColor(match.groups[1]?.value) ?: Color(0xFF172033))
+                    ) {
+                        append(match.groups[2]?.value.orEmpty())
+                    }
+                }
+
+                match.groups[3] != null && match.groups[4] != null -> {
+                    pushStringAnnotation(tag = "URL", annotation = match.groups[4]?.value.orEmpty())
+                    withStyle(
+                        SpanStyle(
+                            color = Color(0xFF1463FF),
+                            fontWeight = FontWeight.Bold,
+                            textDecoration = TextDecoration.Underline
+                        )
+                    ) {
+                        append(match.groups[3]?.value.orEmpty())
+                    }
+                    pop()
+                }
+
+                match.groups[5] != null -> {
+                    withStyle(
+                        SpanStyle(
+                            color = Color(0xFF172033),
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    ) {
+                        append(match.groups[5]?.value.orEmpty())
+                    }
+                }
+            }
+
+            lastIndex = match.range.last + 1
+        }
+
+        if (lastIndex < text.length) {
+            append(text.substring(lastIndex))
+        }
+    }
+}
+
+private fun parseNoticeColor(raw: String?): Color? {
+    val value = raw?.trim().orEmpty()
+    if (value.isBlank()) {
+        return null
+    }
+
+    return runCatching {
+        when {
+            value.startsWith("#") -> Color(android.graphics.Color.parseColor(value))
+            value.equals("red", ignoreCase = true) -> Color.Red
+            value.equals("blue", ignoreCase = true) -> Color(0xFF1463FF)
+            value.equals("green", ignoreCase = true) -> Color(0xFF16A34A)
+            value.equals("orange", ignoreCase = true) -> Color(0xFFEA580C)
+            else -> null
+        }
+    }.getOrNull()
 }
 
 @Composable

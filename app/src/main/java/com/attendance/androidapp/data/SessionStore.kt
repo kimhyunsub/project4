@@ -37,8 +37,21 @@ class SessionStore(context: Context) {
         return next
     }
 
+    fun loadSavedEmployeeCode(): String {
+        return preferences.getString(KEY_SAVED_EMPLOYEE_CODE, "") ?: ""
+    }
+
+    fun saveEmployeeCode(employeeCode: String) {
+        preferences.edit().putString(KEY_SAVED_EMPLOYEE_CODE, employeeCode.trim()).apply()
+    }
+
+    fun clearEmployeeCode() {
+        preferences.edit().remove(KEY_SAVED_EMPLOYEE_CODE).apply()
+    }
+
     companion object {
         private const val KEY_AUTH_SESSION = "auth_session"
         private const val KEY_DEVICE_ID = "device_id"
+        private const val KEY_SAVED_EMPLOYEE_CODE = "saved_employee_code"
     }
 }

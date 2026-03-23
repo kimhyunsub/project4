@@ -17,6 +17,7 @@ data class LoginResponseBody(
     val employeeName: String?,
     val companyName: String?,
     val role: String?,
+    val passwordChangeRequired: Boolean?,
     val accessTokenExpiresAt: String?
 )
 
@@ -32,7 +33,8 @@ data class CompanySettingResponseBody(
     val latitude: Double?,
     val longitude: Double?,
     val allowedRadiusMeters: Int?,
-    val lateAfterTime: String?
+    val lateAfterTime: String?,
+    val noticeMessage: String?
 )
 
 data class TodayAttendanceResponseBody(
@@ -64,6 +66,15 @@ data class CheckOutResponseBody(
     val message: String?
 )
 
+data class ChangePasswordRequestBody(
+    val currentPassword: String?,
+    val newPassword: String
+)
+
+data class ChangePasswordResponseBody(
+    val message: String?
+)
+
 data class AuthSession(
     val token: String,
     val tokenType: String,
@@ -80,7 +91,8 @@ data class UserInfo(
     val name: String,
     val employeeCode: String,
     val companyName: String?,
-    val role: String?
+    val role: String?,
+    val passwordChangeRequired: Boolean
 )
 
 data class CompanySetting(
@@ -89,7 +101,8 @@ data class CompanySetting(
     val latitude: Double = 37.5665,
     val longitude: Double = 126.9780,
     val allowedRadiusMeters: Int = 100,
-    val lateAfterTime: String? = null
+    val lateAfterTime: String? = null,
+    val noticeMessage: String = ""
 )
 
 data class TodayAttendanceStatus(
@@ -108,15 +121,20 @@ data class UiLocation(
 )
 
 data class AppUiState(
-    val employeeCode: String = "EMP001",
-    val password: String = "password1234",
+    val employeeCode: String = "",
+    val password: String = "",
+    val rememberEmployeeCode: Boolean = false,
     val authSession: AuthSession? = null,
     val companySetting: CompanySetting = CompanySetting(),
     val attendanceStatus: TodayAttendanceStatus = TodayAttendanceStatus(),
     val currentLocation: UiLocation? = null,
     val errorMessage: String? = null,
     val loadingLogin: Boolean = false,
+    val changingPassword: Boolean = false,
     val loadingLocation: Boolean = false,
     val submittingAttendance: Boolean = false,
-    val locationPermissionGranted: Boolean = false
+    val locationPermissionGranted: Boolean = false,
+    val newPassword: String = "",
+    val confirmPassword: String = "",
+    val showCheckOutConfirm: Boolean = false
 )

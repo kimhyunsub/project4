@@ -4,6 +4,8 @@ import com.attendance.androidapp.BuildConfig
 import com.attendance.androidapp.model.AttendanceActionRequestBody
 import com.attendance.androidapp.model.CheckInResponseBody
 import com.attendance.androidapp.model.CheckOutResponseBody
+import com.attendance.androidapp.model.ChangePasswordRequestBody
+import com.attendance.androidapp.model.ChangePasswordResponseBody
 import com.attendance.androidapp.model.CompanySettingResponseBody
 import com.attendance.androidapp.model.ErrorResponseBody
 import com.attendance.androidapp.model.LoginRequestBody
@@ -24,6 +26,12 @@ import retrofit2.http.POST
 interface AttendanceApi {
     @POST("auth/login")
     suspend fun login(@Body request: LoginRequestBody): LoginResponseBody
+
+    @POST("auth/change-password")
+    suspend fun changePassword(
+        @Header("Authorization") authorization: String,
+        @Body request: ChangePasswordRequestBody
+    ): ChangePasswordResponseBody
 
     @GET("attendance/public/company-setting")
     suspend fun getPublicCompanySetting(): CompanySettingResponseBody
