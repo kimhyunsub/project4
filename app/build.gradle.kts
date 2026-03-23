@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.Copy
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -77,4 +79,16 @@ dependencies {
 
     implementation("com.google.android.gms:play-services-location:21.3.0")
     implementation("org.osmdroid:osmdroid-android:6.1.18")
+}
+
+val officialApkName = "kounbiz.apk"
+
+tasks.register<Copy>("packageOfficialDebugApk") {
+    group = "distribution"
+    description = "Copies the debug APK to an official delivery folder with a clean filename."
+    dependsOn("assembleDebug")
+
+    from(layout.buildDirectory.file("outputs/apk/debug/app-debug.apk"))
+    into(layout.buildDirectory.dir("outputs/apk/official"))
+    rename { officialApkName }
 }
