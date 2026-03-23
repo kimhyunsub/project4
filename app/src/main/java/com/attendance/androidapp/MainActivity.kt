@@ -380,11 +380,6 @@ class AttendanceViewModel(
     }
 
     fun requestCheckOut() {
-        val state = _uiState.value
-        if (state.currentLocation == null) {
-            _uiState.update { it.copy(errorMessage = "현재 위치를 아직 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.") }
-            return
-        }
         _uiState.update { it.copy(showCheckOutConfirm = true) }
     }
 
@@ -400,17 +395,26 @@ class AttendanceViewModel(
     private fun submitAttendanceAction(isCheckIn: Boolean) {
         val state = _uiState.value
         val session = state.authSession ?: return
-        val currentLocation = state.currentLocation ?: return
+        val requestLocation = when {
+            state.currentLocation != null -> state.currentLocation
+            !isCheckIn -> UiLocation(
+                latitude = state.companySetting.latitude,
+                longitude = state.companySetting.longitude,
+                accuracyMeters = 9999.0,
+                capturedAt = Instant.now().toString()
+            )
+            else -> return
+        }
 
         viewModelScope.launch {
             _uiState.update { it.copy(submittingAttendance = true, errorMessage = null) }
             try {
                 val authorization = "Bearer ${session.token}"
                 val request = AttendanceActionRequestBody(
-                    latitude = currentLocation.latitude,
-                    longitude = currentLocation.longitude,
-                    accuracyMeters = currentLocation.accuracyMeters,
-                    capturedAt = currentLocation.capturedAt
+                    latitude = requestLocation.latitude,
+                    longitude = requestLocation.longitude,
+                    accuracyMeters = requestLocation.accuracyMeters,
+                    capturedAt = requestLocation.capturedAt
                 )
 
                 if (isCheckIn) {
