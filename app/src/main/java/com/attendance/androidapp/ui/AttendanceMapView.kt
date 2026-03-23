@@ -77,8 +77,28 @@ fun AttendanceMapView(
             }
 
             if (currentPoint != null) {
-                val boundingBox = BoundingBox.fromGeoPointsSafe(listOf(companyPoint, currentPoint))
-                mapView.zoomToBoundingBox(boundingBox, true, 160)
+                val latitudeGap = kotlin.math.abs(companyPoint.latitude - currentPoint.latitude)
+                val longitudeGap = kotlin.math.abs(companyPoint.longitude - currentPoint.longitude)
+
+                if (latitudeGap < 0.00001 && longitudeGap < 0.00001) {
+                    mapView.controller.setZoom(17.0)
+                    mapView.controller.setCenter(currentPoint)
+                } else {
+                    runCatching {
+                        val boundingBox = BoundingBox.fromGeoPointsSafe(listOf(companyPoint, currentPoint))
+                        mapView.post {
+                            runCatching {
+                                mapView.zoomToBoundingBox(boundingBox, true, 160)
+                            }.onFailure {
+                                mapView.controller.setZoom(16.0)
+                                mapView.controller.setCenter(currentPoint)
+                            }
+                        }
+                    }.onFailure {
+                        mapView.controller.setZoom(16.0)
+                        mapView.controller.setCenter(currentPoint)
+                    }
+                }
             } else {
                 mapView.controller.setZoom(17.0)
                 mapView.controller.setCenter(companyPoint)
