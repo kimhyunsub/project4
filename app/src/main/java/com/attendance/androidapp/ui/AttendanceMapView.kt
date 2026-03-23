@@ -1,6 +1,7 @@
 package com.attendance.androidapp.ui
 
 import android.content.Context
+import android.view.ViewGroup
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Modifier
@@ -30,8 +31,13 @@ fun AttendanceMapView(
         modifier = modifier,
         factory = { ctx ->
             MapView(ctx).apply {
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
                 setTileSource(TileSourceFactory.MAPNIK)
                 setMultiTouchControls(true)
+                setBuiltInZoomControls(false)
                 controller.setZoom(17.0)
             }
         },

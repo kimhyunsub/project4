@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
@@ -72,6 +73,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 import java.time.Instant
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeParseException
@@ -545,12 +547,23 @@ private fun AttendanceScreen(
 ) {
     val currentLocation = state.currentLocation
     val companySetting = state.companySetting
+    val nowInSeoul = LocalDateTime.now(ZoneId.of("Asia/Seoul"))
+    val effectiveAttendanceStatus = if (shouldEnableCheckInForNewDay(state.attendanceStatus.attendanceDate, nowInSeoul)) {
+        state.attendanceStatus.copy(
+            checkedInAt = null,
+            checkedOutAt = null,
+            attendanceDate = nowInSeoul.toLocalDate().toString(),
+            status = null
+        )
+    } else {
+        state.attendanceStatus
+    }
     val distance = currentLocation?.let {
         DistanceUtils.calculateMeters(it, companySetting.latitude, companySetting.longitude)
     }
 
     val canCheckIn = state.authSession != null &&
-        state.attendanceStatus.checkedInAt == null &&
+        effectiveAttendanceStatus.checkedInAt == null &&
         !state.submittingAttendance &&
         currentLocation != null &&
         distance != null &&
@@ -558,8 +571,8 @@ private fun AttendanceScreen(
         distance <= companySetting.allowedRadiusMeters
 
     val canCheckOut = state.authSession != null &&
-        state.attendanceStatus.checkedInAt != null &&
-        state.attendanceStatus.checkedOutAt == null &&
+        effectiveAttendanceStatus.checkedInAt != null &&
+        effectiveAttendanceStatus.checkedOutAt == null &&
         !state.submittingAttendance &&
         currentLocation != null &&
         distance != null &&
@@ -606,7 +619,7 @@ private fun AttendanceScreen(
                     color = Color(0xFF172033)
                 )
                 Text(
-                    text = "${state.authSession?.user?.employeeCode.orEmpty()} · 오늘 출근 ${formatTime(state.attendanceStatus.checkedInAt)} / 퇴근 ${formatTime(state.attendanceStatus.checkedOutAt)}",
+                    text = "${state.authSession?.user?.employeeCode.orEmpty()} · 오늘 출근 ${formatTime(effectiveAttendanceStatus.checkedInAt)} / 퇴근 ${formatTime(effectiveAttendanceStatus.checkedOutAt)}",
                     color = Color(0xFF536076)
                 )
                 Text(
@@ -624,7 +637,8 @@ private fun AttendanceScreen(
 
         Surface(
             modifier = Modifier
-                .weight(1f)
+                .weight(1.25f)
+                .heightIn(min = 320.dp)
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp),
             shape = RoundedCornerShape(28.dp),
@@ -675,7 +689,9 @@ private fun AttendanceScreen(
         }
 
         Surface(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 320.dp),
             shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
             color = Color.White
         ) {
@@ -689,20 +705,20 @@ private fun AttendanceScreen(
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = when {
-                        state.attendanceStatus.checkedOutAt != null -> "오늘 퇴근까지 완료되었습니다."
-                        state.attendanceStatus.checkedInAt != null -> "출근 완료. 회사 반경 안에서 정확한 위치가 확인되면 퇴근 버튼이 활성화됩니다."
+                        effectiveAttendanceStatus.checkedOutAt != null -> "오늘 퇴근까지 완료되었습니다."
+                        effectiveAttendanceStatus.checkedInAt != null -> "출근 완료. 회사 반경 안에서 정확한 위치가 확인되면 퇴근 버튼이 활성화됩니다."
                         else -> "회사 반경 안에서 정확한 위치가 확인되면 출근 버튼이 활성화됩니다."
                     },
                     color = Color(0xFF536076)
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 DetailLine("기준 위치", state.attendanceStatus.companyName ?: companySetting.companyName)
-                DetailLine("상태", state.attendanceStatus.status ?: "-")
-                DetailLine("근무일", state.attendanceStatus.attendanceDate ?: "-")
+                DetailLine("상태", effectiveAttendanceStatus.status ?: "-")
+                DetailLine("근무일", effectiveAttendanceStatus.attendanceDate ?: nowInSeoul.toLocalDate().toString())
                 DetailLine("위치 정확도", currentLocation?.accuracyMeters?.let { "약 ${it.toInt()}m" } ?: "-")
                 DetailLine("로그인 유지 만료", formatDate(state.authSession?.expiresAt))
-                DetailLine("오늘 출근", formatTime(state.attendanceStatus.checkedInAt))
-                DetailLine("오늘 퇴근", formatTime(state.attendanceStatus.checkedOutAt))
+                DetailLine("오늘 출근", formatTime(effectiveAttendanceStatus.checkedInAt))
+                DetailLine("오늘 퇴근", formatTime(effectiveAttendanceStatus.checkedOutAt))
 
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(
@@ -711,7 +727,7 @@ private fun AttendanceScreen(
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1463FF))
                 ) {
-                    if (state.submittingAttendance && state.attendanceStatus.checkedInAt == null) {
+                    if (state.submittingAttendance && effectiveAttendanceStatus.checkedInAt == null) {
                         CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                     } else {
                         Text("출근하기")
@@ -724,7 +740,7 @@ private fun AttendanceScreen(
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F172A))
                 ) {
-                    if (state.submittingAttendance && state.attendanceStatus.checkedInAt != null && state.attendanceStatus.checkedOutAt == null) {
+                    if (state.submittingAttendance && effectiveAttendanceStatus.checkedInAt != null && effectiveAttendanceStatus.checkedOutAt == null) {
                         CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                     } else {
                         Text("퇴근하기")
@@ -796,4 +812,13 @@ private fun parseDateTime(value: String): LocalDateTime? {
     } catch (_: DateTimeParseException) {
         runCatching { LocalDateTime.parse(value) }.getOrNull()
     }
+}
+
+private fun shouldEnableCheckInForNewDay(attendanceDate: String?, nowInSeoul: LocalDateTime): Boolean {
+    if (attendanceDate.isNullOrBlank()) {
+        return false
+    }
+
+    val savedDate = runCatching { LocalDate.parse(attendanceDate) }.getOrNull() ?: return false
+    return nowInSeoul.hour >= 1 && savedDate != nowInSeoul.toLocalDate()
 }
