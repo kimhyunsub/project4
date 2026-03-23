@@ -2,6 +2,8 @@ package com.attendance.androidapp.ui
 
 import android.content.Context
 import android.view.ViewGroup
+import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.DrawableCompat
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Modifier
@@ -49,6 +51,7 @@ fun AttendanceMapView(
             val companyMarker = Marker(mapView).apply {
                 position = companyPoint
                 title = companySetting.companyName
+                icon = createTintedMarkerDrawable(context, 0xFF1463FF.toInt())
                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
             }
             mapView.overlays.add(companyMarker)
@@ -66,6 +69,7 @@ fun AttendanceMapView(
                 val currentMarker = Marker(mapView).apply {
                     position = currentPoint
                     title = "현재 위치"
+                    icon = createTintedMarkerDrawable(context, 0xFFDC2626.toInt())
                     setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
                 }
                 mapView.overlays.add(currentMarker)
@@ -75,3 +79,9 @@ fun AttendanceMapView(
         }
     )
 }
+
+private fun createTintedMarkerDrawable(context: Context, color: Int) =
+    ContextCompat.getDrawable(context, org.osmdroid.library.R.drawable.marker_default)?.mutate()?.let { drawable ->
+        DrawableCompat.setTint(DrawableCompat.wrap(drawable), color)
+        drawable
+    }
