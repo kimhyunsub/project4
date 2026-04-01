@@ -893,32 +893,59 @@ private fun AttendanceScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 16.dp),
+                .padding(horizontal = 20.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "${state.authSession?.user?.name ?: "사용자"}님",
+                    text = buildAnnotatedString {
+                        append(state.authSession?.user?.name ?: "사용자")
+                        append(" ")
+                        withStyle(SpanStyle(color = Color(0xFF52607A))) {
+                            append("(${state.authSession?.user?.employeeCode.orEmpty()})")
+                        }
+                    },
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.ExtraBold,
                     color = Color(0xFF172033)
                 )
-                Text(
-                    text = "${state.authSession?.user?.employeeCode.orEmpty()} · 오늘 출근 ${formatTime(effectiveAttendanceStatus.checkedInAt)} / 퇴근 ${formatTime(effectiveAttendanceStatus.checkedOutAt)}",
-                    color = Color(0xFF536076)
-                )
-                Text(
-                    text = "${state.attendanceStatus.companyName ?: companySetting.companyName} 반경 ${companySetting.allowedRadiusMeters}m",
-                    color = Color(0xFF6A7487)
-                )
             }
-            Button(
-                onClick = onLogout,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDCE8FF))
+            Surface(
+                color = Color(0xFFDCE8FF),
+                shape = RoundedCornerShape(999.dp)
             ) {
-                Text("로그아웃", color = Color(0xFF1447B8))
+                Text(
+                    text = when {
+                        BuildConfig.DEMO_MODE && distance == null -> "DEMO"
+                        BuildConfig.DEMO_MODE -> "DEMO ${distance?.toInt()}m"
+                        distance == null -> "위치 확인 중"
+                        else -> "${distance.toInt()}m"
+                    },
+                    color = Color(0xFF1447B8),
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                )
             }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            AttendanceSummaryCard(
+                modifier = Modifier.weight(1f),
+                label = "출근",
+                value = formatTime(effectiveAttendanceStatus.checkedInAt)
+            )
+            AttendanceSummaryCard(
+                modifier = Modifier.weight(1f),
+                label = "퇴근",
+                value = formatTime(effectiveAttendanceStatus.checkedOutAt)
+            )
         }
 
         Surface(
@@ -1029,6 +1056,36 @@ private fun AttendanceScreen(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun AttendanceSummaryCard(
+    modifier: Modifier = Modifier,
+    label: String,
+    value: String
+) {
+    Surface(
+        modifier = modifier,
+        color = Color(0xFFF4F7FB),
+        shape = RoundedCornerShape(14.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFDBE4F0))
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Text(
+                text = label,
+                color = Color(0xFF6A7487),
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.labelSmall
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = value,
+                color = Color(0xFF172033),
+                fontWeight = FontWeight.ExtraBold,
+                style = MaterialTheme.typography.titleMedium
+            )
         }
     }
 }
