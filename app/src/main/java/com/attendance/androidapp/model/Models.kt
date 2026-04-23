@@ -119,6 +119,12 @@ data class TodayAttendanceStatus(
     val workplaceName: String? = null
 )
 
+data class CelebrationSettings(
+    val enabled: Boolean = false,
+    val photoUris: List<String> = emptyList(),
+    val activePhotoUri: String? = null
+)
+
 data class UiLocation(
     val latitude: Double,
     val longitude: Double,
@@ -140,6 +146,10 @@ data class AppUiState(
     val loadingLocation: Boolean = false,
     val submittingAttendance: Boolean = false,
     val locationPermissionGranted: Boolean = false,
+    val celebrationEnabled: Boolean = false,
+    val celebrationPhotoUris: List<String> = emptyList(),
+    val activeCelebrationPhotoUri: String? = null,
+    val showCelebrationPhoto: Boolean = false,
     val newPassword: String = "",
     val confirmPassword: String = "",
     val showCheckOutConfirm: Boolean = false

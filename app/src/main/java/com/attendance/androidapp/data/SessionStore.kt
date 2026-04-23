@@ -2,6 +2,7 @@ package com.attendance.androidapp.data
 
 import android.content.Context
 import com.attendance.androidapp.model.AuthSession
+import com.attendance.androidapp.model.CelebrationSettings
 import com.google.gson.Gson
 import java.util.UUID
 
@@ -49,9 +50,19 @@ class SessionStore(context: Context) {
         preferences.edit().remove(KEY_SAVED_EMPLOYEE_CODE).apply()
     }
 
+    fun loadCelebrationSettings(): CelebrationSettings {
+        val raw = preferences.getString(KEY_CELEBRATION_SETTINGS, null) ?: return CelebrationSettings()
+        return runCatching { gson.fromJson(raw, CelebrationSettings::class.java) }.getOrDefault(CelebrationSettings())
+    }
+
+    fun saveCelebrationSettings(settings: CelebrationSettings) {
+        preferences.edit().putString(KEY_CELEBRATION_SETTINGS, gson.toJson(settings)).apply()
+    }
+
     companion object {
         private const val KEY_AUTH_SESSION = "auth_session"
         private const val KEY_DEVICE_ID = "device_id"
         private const val KEY_SAVED_EMPLOYEE_CODE = "saved_employee_code"
+        private const val KEY_CELEBRATION_SETTINGS = "celebration_settings"
     }
 }

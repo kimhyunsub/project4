@@ -1,8 +1,12 @@
 package com.attendance.androidapp
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
 import android.location.Location
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -12,6 +16,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,10 +39,13 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -45,9 +54,16 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -70,6 +86,7 @@ import com.attendance.androidapp.location.LocationTracker
 import com.attendance.androidapp.model.AppUiState
 import com.attendance.androidapp.model.AttendanceActionRequestBody
 import com.attendance.androidapp.model.AuthSession
+import com.attendance.androidapp.model.CelebrationSettings
 import com.attendance.androidapp.model.ChangePasswordRequestBody
 import com.attendance.androidapp.model.CompanySetting
 import com.attendance.androidapp.model.LoginRequestBody
@@ -89,8 +106,6 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeParseException
-import android.content.Intent
-import android.net.Uri
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -145,11 +160,15 @@ class AttendanceViewModel(
     private val deviceName: String
 ) : ViewModel() {
     private val savedEmployeeCode = sessionStore.loadSavedEmployeeCode()
+    private val savedCelebrationSettings = sessionStore.loadCelebrationSettings()
     private val _uiState = MutableStateFlow(
         AppUiState(
             authSession = sessionStore.loadSession(),
             employeeCode = savedEmployeeCode,
-            rememberEmployeeCode = savedEmployeeCode.isNotBlank()
+            rememberEmployeeCode = savedEmployeeCode.isNotBlank(),
+            celebrationEnabled = savedCelebrationSettings.enabled,
+            celebrationPhotoUris = savedCelebrationSettings.photoUris,
+            activeCelebrationPhotoUri = savedCelebrationSettings.activePhotoUri
         )
     )
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
@@ -220,6 +239,68 @@ class AttendanceViewModel(
         _uiState.update { it.copy(errorMessage = null) }
     }
 
+    fun setCelebrationEnabled(enabled: Boolean) {
+        val current = _uiState.value
+        persistCelebrationSettings(
+            CelebrationSettings(
+                enabled = enabled && current.celebrationPhotoUris.isNotEmpty(),
+                photoUris = current.celebrationPhotoUris,
+                activePhotoUri = if (enabled) current.activeCelebrationPhotoUri else null
+            )
+        )
+    }
+
+    fun addCelebrationPhotos(photoUris: List<String>) {
+        if (photoUris.isEmpty()) {
+            return
+        }
+        val current = _uiState.value
+        val merged = (current.celebrationPhotoUris + photoUris)
+            .distinct()
+            .takeLast(MAX_CELEBRATION_PHOTOS)
+        persistCelebrationSettings(
+            CelebrationSettings(
+                enabled = current.celebrationEnabled || merged.isNotEmpty(),
+                photoUris = merged,
+                activePhotoUri = current.activeCelebrationPhotoUri
+            )
+        )
+        if (current.attendanceStatus.checkedInAt != null && merged.isNotEmpty()) {
+            showRandomCelebrationPhoto(merged)
+        }
+    }
+
+    fun removeCelebrationPhoto(photoUri: String) {
+        val current = _uiState.value
+        val remaining = current.celebrationPhotoUris.filterNot { it == photoUri }
+        val nextActive = if (current.activeCelebrationPhotoUri == photoUri) null else current.activeCelebrationPhotoUri
+        persistCelebrationSettings(
+            CelebrationSettings(
+                enabled = current.celebrationEnabled && remaining.isNotEmpty(),
+                photoUris = remaining,
+                activePhotoUri = nextActive
+            )
+        )
+        _uiState.update {
+            it.copy(
+                showCelebrationPhoto = if (nextActive == null) false else it.showCelebrationPhoto
+            )
+        }
+    }
+
+    fun clearCelebrationPhotos() {
+        persistCelebrationSettings(CelebrationSettings())
+        _uiState.update {
+            it.copy(
+                showCelebrationPhoto = false
+            )
+        }
+    }
+
+    fun dismissCelebrationPhoto() {
+        _uiState.update { it.copy(showCelebrationPhoto = false) }
+    }
+
     fun logout() {
         sessionStore.clearSession()
         _uiState.update {
@@ -230,6 +311,7 @@ class AttendanceViewModel(
                 password = "",
                 newPassword = "",
                 confirmPassword = "",
+                showCelebrationPhoto = false,
                 showCheckOutConfirm = false
             )
         }
@@ -402,6 +484,41 @@ class AttendanceViewModel(
         submitAttendanceAction(isCheckIn = false)
     }
 
+    private fun persistCelebrationSettings(settings: CelebrationSettings) {
+        sessionStore.saveCelebrationSettings(settings)
+        _uiState.update {
+            it.copy(
+                celebrationEnabled = settings.enabled,
+                celebrationPhotoUris = settings.photoUris,
+                activeCelebrationPhotoUri = settings.activePhotoUri
+            )
+        }
+    }
+
+    private fun showRandomCelebrationPhoto(photoUris: List<String> = _uiState.value.celebrationPhotoUris) {
+        val current = _uiState.value
+        if (!current.celebrationEnabled || photoUris.isEmpty()) {
+            _uiState.update { it.copy(showCelebrationPhoto = false) }
+            return
+        }
+
+        val pool = if (photoUris.size > 1 && current.activeCelebrationPhotoUri != null) {
+            photoUris.filterNot { it == current.activeCelebrationPhotoUri }
+        } else {
+            photoUris
+        }
+        val nextPhotoUri = pool.randomOrNull() ?: photoUris.randomOrNull() ?: return
+
+        persistCelebrationSettings(
+            CelebrationSettings(
+                enabled = true,
+                photoUris = photoUris,
+                activePhotoUri = nextPhotoUri
+            )
+        )
+        _uiState.update { it.copy(showCelebrationPhoto = true) }
+    }
+
     private fun submitAttendanceAction(isCheckIn: Boolean) {
         val state = _uiState.value
         val session = state.authSession ?: return
@@ -438,6 +555,7 @@ class AttendanceViewModel(
                             errorMessage = response.message
                         )
                     }
+                    showRandomCelebrationPhoto()
                 } else {
                     val response = api.checkOut(authorization, request)
                     _uiState.update {
@@ -488,6 +606,19 @@ class AttendanceViewModel(
                         ),
                         companySetting = company.toUiModel()
                     )
+                }
+                val refreshedState = _uiState.value
+                if (refreshedState.attendanceStatus.checkedInAt != null &&
+                    refreshedState.celebrationEnabled &&
+                    refreshedState.celebrationPhotoUris.isNotEmpty()) {
+                    if (refreshedState.activeCelebrationPhotoUri == null ||
+                        refreshedState.celebrationPhotoUris.none { it == refreshedState.activeCelebrationPhotoUri }) {
+                        showRandomCelebrationPhoto(refreshedState.celebrationPhotoUris)
+                    } else {
+                        _uiState.update { it.copy(showCelebrationPhoto = true) }
+                    }
+                } else {
+                    _uiState.update { it.copy(showCelebrationPhoto = false) }
                 }
             } catch (exception: HttpException) {
                 if (exception.code() == 401) {
@@ -546,6 +677,8 @@ class AttendanceViewModel(
     }
 }
 
+private const val MAX_CELEBRATION_PHOTOS = 10
+
 private fun getDisplayLocationName(attendanceStatus: TodayAttendanceStatus, companySetting: CompanySetting): String {
     return attendanceStatus.workplaceName
         ?: companySetting.workplaceName
@@ -557,7 +690,23 @@ private fun getDisplayLocationName(attendanceStatus: TodayAttendanceStatus, comp
 private fun AttendanceApp(viewModel: AttendanceViewModel) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
-    val locationTracker = androidx.compose.runtime.remember { LocationTracker(context) }
+    val locationTracker = remember { LocationTracker(context) }
+
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            uris.forEach { uri ->
+                runCatching {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                }
+            }
+            viewModel.addCelebrationPhotos(uris.map(Uri::toString))
+        }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -625,7 +774,12 @@ private fun AttendanceApp(viewModel: AttendanceViewModel) {
             onDismissCheckOutConfirm = viewModel::dismissCheckOutConfirm,
             onConfirmCheckOut = viewModel::confirmCheckOut,
             onClearError = viewModel::clearError,
-            onLogout = viewModel::logout
+            onLogout = viewModel::logout,
+            onOpenImagePicker = { imagePickerLauncher.launch(arrayOf("image/*")) },
+            onSetCelebrationEnabled = viewModel::setCelebrationEnabled,
+            onRemoveCelebrationPhoto = viewModel::removeCelebrationPhoto,
+            onClearCelebrationPhotos = viewModel::clearCelebrationPhotos,
+            onDismissCelebrationPhoto = viewModel::dismissCelebrationPhoto
         )
     }
 }
@@ -838,8 +992,16 @@ private fun AttendanceScreen(
     onDismissCheckOutConfirm: () -> Unit,
     onConfirmCheckOut: () -> Unit,
     onClearError: () -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onOpenImagePicker: () -> Unit,
+    onSetCelebrationEnabled: (Boolean) -> Unit,
+    onRemoveCelebrationPhoto: (String) -> Unit,
+    onClearCelebrationPhotos: () -> Unit,
+    onDismissCelebrationPhoto: () -> Unit
 ) {
+    var showMenu by remember { mutableStateOf(false) }
+    var showImageSettings by remember { mutableStateOf(false) }
+    var showNoticeDialog by remember { mutableStateOf(false) }
     val currentLocation = state.currentLocation
     val companySetting = state.companySetting
     val nowInSeoul = LocalDateTime.now(ZoneId.of("Asia/Seoul"))
@@ -867,6 +1029,7 @@ private fun AttendanceScreen(
 
     val canCheckOut = state.authSession != null && !state.submittingAttendance
     val displayLocationName = getDisplayLocationName(effectiveAttendanceStatus, companySetting)
+    val hasLongNotice = companySetting.noticeMessage.lines().count { it.trim().isNotEmpty() } > 3
 
     Column(
         modifier = Modifier
@@ -874,6 +1037,25 @@ private fun AttendanceScreen(
             .background(Color(0xFFEEF3FB))
             .safeDrawingPadding()
     ) {
+        if (showImageSettings) {
+            ImageSettingsDialog(
+                enabled = state.celebrationEnabled,
+                photoUris = state.celebrationPhotoUris,
+                onDismiss = { showImageSettings = false },
+                onToggleEnabled = onSetCelebrationEnabled,
+                onAddPhotos = onOpenImagePicker,
+                onRemovePhoto = onRemoveCelebrationPhoto,
+                onClearPhotos = onClearCelebrationPhotos
+            )
+        }
+
+        if (showNoticeDialog) {
+            NoticeDialog(
+                noticeMessage = companySetting.noticeMessage,
+                onDismiss = { showNoticeDialog = false }
+            )
+        }
+
         if (state.showCheckOutConfirm) {
             AlertDialog(
                 onDismissRequest = onDismissCheckOutConfirm,
@@ -932,21 +1114,68 @@ private fun AttendanceScreen(
                     color = Color(0xFF172033)
                 )
             }
-            Surface(
-                color = Color(0xFFDCE8FF),
-                shape = RoundedCornerShape(999.dp)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = when {
-                        BuildConfig.DEMO_MODE && distance == null -> "DEMO"
-                        BuildConfig.DEMO_MODE -> "DEMO ${distance?.toInt()}m"
-                        distance == null -> "위치 확인 중"
-                        else -> "${distance.toInt()}m"
-                    },
-                    color = Color(0xFF1447B8),
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
-                )
+                Surface(
+                    color = Color(0xFFDCE8FF),
+                    shape = RoundedCornerShape(999.dp)
+                ) {
+                    Text(
+                        text = when {
+                            BuildConfig.DEMO_MODE && distance == null -> "DEMO"
+                            BuildConfig.DEMO_MODE -> "DEMO ${distance?.toInt()}m"
+                            distance == null -> "위치 확인 중"
+                            else -> "${distance.toInt()}m"
+                        },
+                        color = Color(0xFF1447B8),
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                    )
+                }
+                Box {
+                    Surface(
+                        color = Color(0xFFF4F7FB),
+                        shape = RoundedCornerShape(14.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFDBE4F0)),
+                        modifier = Modifier.clickable { showMenu = true }
+                    ) {
+                        Text(
+                            text = "메뉴",
+                            color = Color(0xFF172033),
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    if (state.celebrationEnabled) {
+                                        "이미지 설정 · 켜짐 (${state.celebrationPhotoUris.size}장)"
+                                    } else {
+                                        "이미지 설정"
+                                    }
+                                )
+                            },
+                            onClick = {
+                                showMenu = false
+                                showImageSettings = true
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("로그아웃") },
+                            onClick = {
+                                showMenu = false
+                                onLogout()
+                            }
+                        )
+                    }
+                }
             }
         }
 
@@ -979,6 +1208,13 @@ private fun AttendanceScreen(
             color = Color(0xFFDDE7F4)
         ) {
             when {
+                state.showCelebrationPhoto && state.activeCelebrationPhotoUri != null -> {
+                    CelebrationPhotoCard(
+                        photoUri = state.activeCelebrationPhotoUri,
+                        onClose = onDismissCelebrationPhoto
+                    )
+                }
+
                 state.loadingLocation -> {
                     CenterMessage(
                         title = "위치 확인 중",
@@ -1035,7 +1271,18 @@ private fun AttendanceScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 20.dp)
             ) {
-                Text("공지사항", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("공지사항", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    if (hasLongNotice) {
+                        TextButton(onClick = { showNoticeDialog = true }) {
+                            Text("전체 보기", color = Color(0xFF1463FF), fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
                 Spacer(modifier = Modifier.height(8.dp))
                 Box(
                     modifier = Modifier
@@ -1119,6 +1366,176 @@ private fun AttendanceSummaryCard(
 }
 
 @Composable
+private fun CelebrationPhotoCard(
+    photoUri: String,
+    onClose: () -> Unit
+) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        UriImage(
+            uriString = photoUri,
+            contentDescription = "출근 완료 이미지",
+            modifier = Modifier.fillMaxSize()
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0x33000000))
+        )
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(20.dp)
+        ) {
+            Text(
+                text = "오늘의 랜덤 이미지",
+                color = Color.White.copy(alpha = 0.88f),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "출근 완료를 축하해요",
+                color = Color.White,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.ExtraBold
+            )
+        }
+        TextButton(
+            onClick = onClose,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(12.dp)
+                .background(Color(0x8A0F172A), RoundedCornerShape(999.dp))
+        ) {
+            Text("닫기", color = Color.White)
+        }
+    }
+}
+
+@Composable
+private fun ImageSettingsDialog(
+    enabled: Boolean,
+    photoUris: List<String>,
+    onDismiss: () -> Unit,
+    onToggleEnabled: (Boolean) -> Unit,
+    onAddPhotos: () -> Unit,
+    onRemovePhoto: (String) -> Unit,
+    onClearPhotos: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("이미지 설정") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    "출근 완료 후 지도 영역 대신 랜덤 이미지를 보여줄지 설정합니다.",
+                    color = Color(0xFF5A657A)
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("이미지 표시", fontWeight = FontWeight.Bold, color = Color(0xFF172033))
+                        Text(
+                            "켜두면 등록한 이미지 중 한 장이 랜덤으로 표시됩니다.",
+                            color = Color(0xFF5A657A),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    Switch(
+                        checked = enabled,
+                        onCheckedChange = onToggleEnabled,
+                        enabled = photoUris.isNotEmpty()
+                    )
+                }
+                Text(
+                    "등록된 이미지 ${photoUris.size}/$MAX_CELEBRATION_PHOTOS",
+                    color = Color(0xFF5A657A),
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = onAddPhotos, enabled = photoUris.size < MAX_CELEBRATION_PHOTOS) {
+                        Text("이미지 추가")
+                    }
+                    OutlinedButton(onClick = onClearPhotos, enabled = photoUris.isNotEmpty()) {
+                        Text("모두 삭제")
+                    }
+                }
+                if (photoUris.isEmpty()) {
+                    Text(
+                        "아직 등록된 이미지가 없습니다. 원하는 사진을 올려두면 출근 완료 후 랜덤으로 보여드립니다.",
+                        color = Color(0xFF5A657A),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        photoUris.forEachIndexed { index, uri ->
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                UriImage(
+                                    uriString = uri,
+                                    contentDescription = "등록 이미지 ${index + 1}",
+                                    modifier = Modifier
+                                        .size(86.dp)
+                                        .clip(RoundedCornerShape(16.dp))
+                                )
+                                TextButton(onClick = { onRemovePhoto(uri) }) {
+                                    Text("삭제", color = Color(0xFFBE123C))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("닫기")
+            }
+        }
+    )
+}
+
+@Composable
+private fun NoticeDialog(
+    noticeMessage: String,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("공지사항 전체 보기") },
+        text = {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 180.dp, max = 420.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                NoticeContent(
+                    noticeMessage = noticeMessage,
+                    fallbackMessage = "등록된 공지사항이 없습니다."
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("닫기")
+            }
+        }
+    )
+}
+
+@Composable
 private fun NoticeContent(noticeMessage: String, fallbackMessage: String) {
     val context = LocalContext.current
     val lines = noticeMessage.lines().map { it.trimEnd() }.filter { it.trim().isNotEmpty() }
@@ -1166,6 +1583,42 @@ private fun NoticeContent(noticeMessage: String, fallbackMessage: String) {
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun UriImage(
+    uriString: String,
+    contentDescription: String,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val imageBitmap by produceState<ImageBitmap?>(initialValue = null, uriString) {
+        value = runCatching {
+            val uri = Uri.parse(uriString)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                ImageDecoder.createSource(context.contentResolver, uri)
+                    .let(ImageDecoder::decodeBitmap)
+                    .asImageBitmap()
+            } else {
+                context.contentResolver.openInputStream(uri)?.use(BitmapFactory::decodeStream)?.asImageBitmap()
+            }
+        }.getOrNull()
+    }
+
+    if (imageBitmap != null) {
+        Image(
+            bitmap = imageBitmap!!,
+            contentDescription = contentDescription,
+            modifier = modifier
+        )
+    } else {
+        Box(
+            modifier = modifier.background(Color(0xFFDCE8FF), RoundedCornerShape(16.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("이미지", color = Color(0xFF1447B8), fontWeight = FontWeight.Bold)
         }
     }
 }
