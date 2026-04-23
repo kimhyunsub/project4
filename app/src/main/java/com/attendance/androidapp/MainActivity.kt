@@ -258,6 +258,7 @@ class AttendanceViewModel(
                         name = response.employeeName ?: "사용자",
                         employeeCode = response.employeeCode ?: state.employeeCode.trim(),
                         companyName = response.companyName,
+                        workplaceName = response.workplaceName,
                         role = response.role,
                         passwordChangeRequired = response.passwordChangeRequired == true
                     )
@@ -277,8 +278,14 @@ class AttendanceViewModel(
                         password = "",
                         newPassword = "",
                         confirmPassword = "",
-                        attendanceStatus = TodayAttendanceStatus(companyName = session.user.companyName),
-                        companySetting = it.companySetting.copy(companyName = session.user.companyName ?: it.companySetting.companyName)
+                        attendanceStatus = TodayAttendanceStatus(
+                            companyName = session.user.companyName,
+                            workplaceName = session.user.workplaceName
+                        ),
+                        companySetting = it.companySetting.copy(
+                            companyName = session.user.companyName ?: it.companySetting.companyName,
+                            workplaceName = session.user.workplaceName ?: it.companySetting.workplaceName
+                        )
                     )
                 }
                 if (!session.user.passwordChangeRequired) {
@@ -369,7 +376,10 @@ class AttendanceViewModel(
                 password = "",
                 newPassword = "",
                 confirmPassword = "",
-                attendanceStatus = TodayAttendanceStatus(companyName = it.companySetting.companyName),
+                attendanceStatus = TodayAttendanceStatus(
+                    companyName = it.companySetting.companyName,
+                    workplaceName = it.companySetting.workplaceName
+                ),
                 errorMessage = null
             )
         }
@@ -473,7 +483,8 @@ class AttendanceViewModel(
                             checkedOutAt = today.checkOutTime,
                             attendanceDate = today.attendanceDate,
                             status = today.status,
-                            companyName = today.companyName ?: company.companyName
+                            companyName = today.companyName ?: company.companyName,
+                            workplaceName = today.workplaceName ?: company.workplaceName
                         ),
                         companySetting = company.toUiModel()
                     )
@@ -499,7 +510,8 @@ class AttendanceViewModel(
                         it.copy(
                             companySetting = response.toUiModel(),
                             attendanceStatus = it.attendanceStatus.copy(
-                                companyName = response.companyName ?: it.attendanceStatus.companyName
+                                companyName = response.companyName ?: it.attendanceStatus.companyName,
+                                workplaceName = response.workplaceName ?: it.attendanceStatus.workplaceName
                             )
                         )
                     }
@@ -524,6 +536,7 @@ class AttendanceViewModel(
         return CompanySetting(
             companyId = companyId,
             companyName = companyName ?: "OpenAI Seoul Office",
+            workplaceName = workplaceName,
             latitude = latitude ?: 37.5665,
             longitude = longitude ?: 126.9780,
             allowedRadiusMeters = allowedRadiusMeters ?: 100,
@@ -531,6 +544,13 @@ class AttendanceViewModel(
             noticeMessage = noticeMessage.orEmpty()
         )
     }
+}
+
+private fun getDisplayLocationName(attendanceStatus: TodayAttendanceStatus, companySetting: CompanySetting): String {
+    return attendanceStatus.workplaceName
+        ?: companySetting.workplaceName
+        ?: attendanceStatus.companyName
+        ?: companySetting.companyName
 }
 
 @Composable
@@ -640,7 +660,7 @@ private fun LoginScreen(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "${state.companySetting.companyName} 출퇴근 서비스입니다. 로그인 후 현재 위치를 확인하고 출근과 퇴근을 기록해 보세요.",
+                    text = "${getDisplayLocationName(state.attendanceStatus, state.companySetting)} 출퇴근 서비스입니다. 로그인 후 현재 위치를 확인하고 출근과 퇴근을 기록해 보세요.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color(0xFF5A657A)
                 )
@@ -846,6 +866,7 @@ private fun AttendanceScreen(
         distance <= companySetting.allowedRadiusMeters
 
     val canCheckOut = state.authSession != null && !state.submittingAttendance
+    val displayLocationName = getDisplayLocationName(effectiveAttendanceStatus, companySetting)
 
     Column(
         modifier = Modifier
@@ -976,7 +997,7 @@ private fun AttendanceScreen(
                         Text("위치 권한이 필요합니다.", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "권한을 허용하면 회사 반경 안에서만 출근 버튼이 활성화됩니다.",
+                            text = "권한을 허용하면 사업장 반경 안에서만 출근 버튼이 활성화됩니다.",
                             textAlign = TextAlign.Center,
                             color = Color(0xFF5C677B)
                         )
@@ -995,7 +1016,8 @@ private fun AttendanceScreen(
                         modifier = Modifier.fillMaxSize(),
                         context = LocalContext.current,
                         companySetting = companySetting,
-                        currentLocation = currentLocation
+                        currentLocation = currentLocation,
+                        displayLocationName = displayLocationName
                     )
                 }
             }
@@ -1004,22 +1026,28 @@ private fun AttendanceScreen(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 320.dp),
+                .heightIn(max = 340.dp),
             shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
             color = Color.White
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp, vertical = 20.dp)
             ) {
                 Text("공지사항", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(8.dp))
-                NoticeContent(
-                    noticeMessage = companySetting.noticeMessage,
-                    fallbackMessage = "등록된 공지사항이 없습니다."
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 120.dp, max = 170.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    NoticeContent(
+                        noticeMessage = companySetting.noticeMessage,
+                        fallbackMessage = "등록된 공지사항이 없습니다."
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(

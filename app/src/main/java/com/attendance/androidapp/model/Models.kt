@@ -16,6 +16,7 @@ data class LoginResponseBody(
     val employeeCode: String?,
     val employeeName: String?,
     val companyName: String?,
+    val workplaceName: String?,
     val role: String?,
     val passwordChangeRequired: Boolean?,
     val accessTokenExpiresAt: String?
@@ -30,6 +31,7 @@ data class ErrorResponseBody(
 data class CompanySettingResponseBody(
     val companyId: Long?,
     val companyName: String?,
+    val workplaceName: String?,
     val latitude: Double?,
     val longitude: Double?,
     val allowedRadiusMeters: Int?,
@@ -43,7 +45,8 @@ data class TodayAttendanceResponseBody(
     val checkInTime: String?,
     val checkOutTime: String?,
     val status: String?,
-    val companyName: String?
+    val companyName: String?,
+    val workplaceName: String?
 )
 
 data class AttendanceActionRequestBody(
@@ -91,6 +94,7 @@ data class UserInfo(
     val name: String,
     val employeeCode: String,
     val companyName: String?,
+    val workplaceName: String?,
     val role: String?,
     val passwordChangeRequired: Boolean
 )
@@ -98,6 +102,7 @@ data class UserInfo(
 data class CompanySetting(
     val companyId: Long? = null,
     val companyName: String = "OpenAI Seoul Office",
+    val workplaceName: String? = null,
     val latitude: Double = 37.5665,
     val longitude: Double = 126.9780,
     val allowedRadiusMeters: Int = 100,
@@ -110,7 +115,8 @@ data class TodayAttendanceStatus(
     val checkedOutAt: String? = null,
     val attendanceDate: String? = null,
     val status: String? = null,
-    val companyName: String? = null
+    val companyName: String? = null,
+    val workplaceName: String? = null
 )
 
 data class UiLocation(

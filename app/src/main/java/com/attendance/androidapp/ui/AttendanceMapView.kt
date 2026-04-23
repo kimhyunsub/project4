@@ -27,7 +27,8 @@ fun AttendanceMapView(
     modifier: Modifier = Modifier,
     context: Context,
     companySetting: CompanySetting,
-    currentLocation: UiLocation?
+    currentLocation: UiLocation?,
+    displayLocationName: String
 ) {
     DisposableEffect(context) {
         Configuration.getInstance().userAgentValue = context.packageName
@@ -64,7 +65,7 @@ fun AttendanceMapView(
 
             val companyMarker = Marker(mapView).apply {
                 position = companyPoint
-                title = companySetting.companyName
+                title = displayLocationName
                 icon = createCompanyMarkerDrawable(context)
                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
             }
