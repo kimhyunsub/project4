@@ -22,6 +22,11 @@ import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polygon
 
+private const val DEFAULT_MAP_ZOOM = 14.6
+private const val FALLBACK_MAP_ZOOM = 14.4
+private const val SAME_POINT_MAP_ZOOM = 14.8
+private const val BOUNDING_BOX_PADDING_PX = 360
+
 @Composable
 fun AttendanceMapView(
     modifier: Modifier = Modifier,
@@ -46,7 +51,7 @@ fun AttendanceMapView(
                 setTileSource(TileSourceFactory.MAPNIK)
                 setMultiTouchControls(true)
                 setBuiltInZoomControls(false)
-                controller.setZoom(15.5)
+                controller.setZoom(DEFAULT_MAP_ZOOM)
             }
         },
         update = { mapView ->
@@ -94,26 +99,26 @@ fun AttendanceMapView(
                 val longitudeGap = kotlin.math.abs(companyPoint.longitude - currentPoint.longitude)
 
                 if (latitudeGap < 0.00001 && longitudeGap < 0.00001) {
-                    mapView.controller.setZoom(15.5)
+                    mapView.controller.setZoom(SAME_POINT_MAP_ZOOM)
                     mapView.controller.setCenter(currentPoint)
                 } else {
                     runCatching {
                         val boundingBox = BoundingBox.fromGeoPointsSafe(listOf(companyPoint, currentPoint))
                         mapView.post {
                             runCatching {
-                                mapView.zoomToBoundingBox(boundingBox, true, 260)
+                                mapView.zoomToBoundingBox(boundingBox, true, BOUNDING_BOX_PADDING_PX)
                             }.onFailure {
-                                mapView.controller.setZoom(15.0)
+                                mapView.controller.setZoom(FALLBACK_MAP_ZOOM)
                                 mapView.controller.setCenter(currentPoint)
                             }
                         }
                     }.onFailure {
-                        mapView.controller.setZoom(15.0)
+                        mapView.controller.setZoom(FALLBACK_MAP_ZOOM)
                         mapView.controller.setCenter(currentPoint)
                     }
                 }
             } else {
-                mapView.controller.setZoom(15.5)
+                mapView.controller.setZoom(DEFAULT_MAP_ZOOM)
                 mapView.controller.setCenter(companyPoint)
             }
 
