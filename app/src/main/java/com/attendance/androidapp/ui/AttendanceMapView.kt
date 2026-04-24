@@ -21,10 +21,11 @@ import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polygon
 
-private const val DEFAULT_MAP_ZOOM = 14.6
-private const val FALLBACK_MAP_ZOOM = 14.4
-private const val SAME_POINT_MAP_ZOOM = 14.8
-private const val BOUNDING_BOX_PADDING_PX = 360
+private const val DEFAULT_MAP_ZOOM = 13.8
+private const val FALLBACK_MAP_ZOOM = 13.6
+private const val CLOSE_RANGE_MAP_ZOOM = 13.9
+private const val BOUNDING_BOX_PADDING_PX = 520
+private const val CLOSE_RANGE_DISTANCE_METERS = 300.0
 
 @Composable
 fun AttendanceMapView(
@@ -88,11 +89,8 @@ fun AttendanceMapView(
             }
 
             if (currentPoint != null) {
-                val latitudeGap = kotlin.math.abs(companyPoint.latitude - currentPoint.latitude)
-                val longitudeGap = kotlin.math.abs(companyPoint.longitude - currentPoint.longitude)
-
-                if (latitudeGap < 0.00001 && longitudeGap < 0.00001) {
-                    mapView.controller.setZoom(SAME_POINT_MAP_ZOOM)
+                if (distanceToCompany != null && distanceToCompany < CLOSE_RANGE_DISTANCE_METERS) {
+                    mapView.controller.setZoom(CLOSE_RANGE_MAP_ZOOM)
                     mapView.controller.setCenter(currentPoint)
                 } else {
                     runCatching {
