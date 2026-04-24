@@ -15,12 +15,19 @@ import com.attendance.androidapp.model.CompanySetting
 import com.attendance.androidapp.model.UiLocation
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polygon
+import kotlin.math.cos
+import kotlin.math.max
+import kotlin.math.min
 
 private const val MAP_ZOOM = 14.35
+private const val LARGE_RADIUS_THRESHOLD_METERS = 1_000
+private const val RADIUS_VIEW_MARGIN = 1.15
+private const val RADIUS_BOUNDING_PADDING_PX = 56
 
 @Composable
 fun AttendanceMapView(
@@ -83,7 +90,16 @@ fun AttendanceMapView(
                 mapView.overlays.add(currentMarker)
             }
 
-            if (currentPoint != null) {
+            if (companySetting.allowedRadiusMeters >= LARGE_RADIUS_THRESHOLD_METERS) {
+                val radiusBoundingBox = createRadiusBoundingBox(
+                    center = companyPoint,
+                    radiusMeters = companySetting.allowedRadiusMeters * RADIUS_VIEW_MARGIN,
+                    currentPoint = currentPoint
+                )
+                mapView.post {
+                    mapView.zoomToBoundingBox(radiusBoundingBox, true, RADIUS_BOUNDING_PADDING_PX)
+                }
+            } else if (currentPoint != null) {
                 mapView.controller.setZoom(MAP_ZOOM)
                 mapView.controller.setCenter(currentPoint)
             } else {
@@ -94,6 +110,29 @@ fun AttendanceMapView(
             mapView.invalidate()
         }
     )
+}
+
+private fun createRadiusBoundingBox(
+    center: GeoPoint,
+    radiusMeters: Double,
+    currentPoint: GeoPoint?
+): BoundingBox {
+    val latitudeDelta = radiusMeters / 111_320.0
+    val longitudeDelta = radiusMeters / (111_320.0 * cos(Math.toRadians(center.latitude)))
+
+    var north = center.latitude + latitudeDelta
+    var south = center.latitude - latitudeDelta
+    var east = center.longitude + longitudeDelta
+    var west = center.longitude - longitudeDelta
+
+    if (currentPoint != null) {
+        north = max(north, currentPoint.latitude)
+        south = min(south, currentPoint.latitude)
+        east = max(east, currentPoint.longitude)
+        west = min(west, currentPoint.longitude)
+    }
+
+    return BoundingBox(north, east, south, west)
 }
 
 private fun createCompanyMarkerDrawable(context: Context): BitmapDrawable {
