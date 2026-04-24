@@ -1112,266 +1112,276 @@ private fun AttendanceScreen(
             }
         }
 
-        Row(
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .fillMaxSize()
+                .padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = buildAnnotatedString {
-                        append(state.authSession?.user?.name ?: "사용자")
-                        append(" ")
-                        withStyle(SpanStyle(color = Color(0xFF52607A))) {
-                            append("(${state.authSession?.user?.employeeCode.orEmpty()})")
-                        }
-                    },
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color(0xFF172033)
-                )
-            }
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                shape = RoundedCornerShape(34.dp),
+                color = Color(0xFFDDE7F4)
             ) {
-                Surface(
-                    color = Color(0xFFDCE8FF),
-                    shape = RoundedCornerShape(999.dp)
-                ) {
-                    Text(
-                        text = when {
-                            BuildConfig.DEMO_MODE && distance == null -> "DEMO"
-                            BuildConfig.DEMO_MODE -> "DEMO ${distance?.toInt()}m"
-                            distance == null -> "위치 확인 중"
-                            else -> "${distance.toInt()}m"
-                        },
-                        color = Color(0xFF1447B8),
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
-                    )
-                }
-                Box {
-                    Surface(
-                        color = Color(0xFFF4F7FB),
-                        shape = RoundedCornerShape(14.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFDBE4F0)),
-                        modifier = Modifier.clickable { showMenu = true }
-                    ) {
-                        Text(
-                            text = "메뉴",
-                            color = Color(0xFF172033),
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                when {
+                    state.showCelebrationPhoto && state.activeCelebrationPhotoUri != null -> {
+                        CelebrationPhotoCard(
+                            photoUri = state.activeCelebrationPhotoUri,
+                            onClose = onDismissCelebrationPhoto
                         )
                     }
-                    DropdownMenu(
-                        expanded = showMenu,
-                        onDismissRequest = { showMenu = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    if (state.celebrationEnabled) {
-                                        "이미지 설정 · 켜짐 (${state.celebrationPhotoUris.size}장)"
-                                    } else {
-                                        "이미지 설정"
-                                    }
-                                )
-                            },
-                            onClick = {
-                                showMenu = false
-                                showImageSettings = true
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("로그아웃") },
-                            onClick = {
-                                showMenu = false
-                                onLogout()
-                            }
+
+                    state.loadingLocation -> {
+                        CenterMessage(
+                            title = "위치 확인 중",
+                            message = "현재 위치를 확인하고 있습니다."
                         )
                     }
-                }
-            }
-        }
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            AttendanceSummaryCard(
-                modifier = Modifier.weight(1f),
-                label = "출근",
-                value = formatTime(effectiveAttendanceStatus.checkedInAt)
-            )
-            AttendanceSummaryCard(
-                modifier = Modifier.weight(1f),
-                label = "퇴근",
-                value = formatTime(effectiveAttendanceStatus.checkedOutAt)
-            )
-        }
-
-        Surface(
-            modifier = Modifier
-                .weight(1.25f)
-                .heightIn(min = 320.dp)
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            shape = RoundedCornerShape(28.dp),
-            color = Color(0xFFDDE7F4)
-        ) {
-            when {
-                state.showCelebrationPhoto && state.activeCelebrationPhotoUri != null -> {
-                    CelebrationPhotoCard(
-                        photoUri = state.activeCelebrationPhotoUri,
-                        onClose = onDismissCelebrationPhoto
-                    )
-                }
-
-                state.loadingLocation -> {
-                    CenterMessage(
-                        title = "위치 확인 중",
-                        message = "현재 위치를 확인하고 있습니다."
-                    )
-                }
-
-                !state.locationPermissionGranted -> {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(24.dp),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text("위치 권한이 필요합니다.", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "권한을 허용하면 사업장 반경 안에서만 출근 버튼이 활성화됩니다.",
-                            textAlign = TextAlign.Center,
-                            color = Color(0xFF5C677B)
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Button(
-                            onClick = onRetryPermission,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1463FF))
+                    !state.locationPermissionGranted -> {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(24.dp),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Text("위치 권한 요청")
+                            Text("위치 권한이 필요합니다.", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "권한을 허용하면 사업장 반경 안에서만 출근 버튼이 활성화됩니다.",
+                                textAlign = TextAlign.Center,
+                                color = Color(0xFF5C677B)
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Button(
+                                onClick = onRetryPermission,
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1463FF))
+                            ) {
+                                Text("위치 권한 요청")
+                            }
                         }
                     }
-                }
 
-                else -> {
-                    AttendanceMapView(
-                        modifier = Modifier.fillMaxSize(),
-                        context = LocalContext.current,
-                        companySetting = companySetting,
-                        currentLocation = currentLocation,
-                        displayLocationName = displayLocationName
-                    )
+                    else -> {
+                        AttendanceMapView(
+                            modifier = Modifier.fillMaxSize(),
+                            context = LocalContext.current,
+                            companySetting = companySetting,
+                            currentLocation = currentLocation,
+                            displayLocationName = displayLocationName
+                        )
+                    }
                 }
             }
-        }
 
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 300.dp),
-            shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
-            color = Color.White
-        ) {
-            Column(
+            Surface(
                 modifier = Modifier
+                    .align(Alignment.TopCenter)
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 12.dp)
+                    .padding(12.dp),
+                shape = RoundedCornerShape(26.dp),
+                color = Color(0xF7FFFFFF),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE4EBF5))
             ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("공지사항", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    TextButton(onClick = { showNoticeDialog = true }) {
-                        Text("전체 보기", color = Color(0xFF1463FF), fontWeight = FontWeight.Bold)
-                    }
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 64.dp, max = 92.dp)
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    NoticeContent(
-                        noticeMessage = companySetting.noticeMessage,
-                        fallbackMessage = "등록된 공지사항이 없습니다."
-                    )
-                }
-
-                if (hasMockLocation) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        color = Color(0xFFFFE3E3)
-                    ) {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "위치 변조가 감지되어 출퇴근을 처리할 수 없습니다.",
-                            color = Color(0xFFC92A2A),
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                            text = displayLocationName,
+                            color = Color(0xFF1463FF),
+                            fontWeight = FontWeight.ExtraBold,
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = buildAnnotatedString {
+                                append(state.authSession?.user?.name ?: "사용자")
+                                append(" ")
+                                withStyle(SpanStyle(color = Color(0xFF52607A))) {
+                                    append("(${state.authSession?.user?.employeeCode.orEmpty()})")
+                                }
+                            },
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF172033)
                         )
                     }
-                }
 
-                Spacer(modifier = Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            color = Color(0xFFE7F0FF),
+                            shape = RoundedCornerShape(999.dp)
+                        ) {
+                            Text(
+                                text = when {
+                                    BuildConfig.DEMO_MODE && distance == null -> "DEMO"
+                                    BuildConfig.DEMO_MODE -> "DEMO ${distance?.toInt()}m"
+                                    distance == null -> "확인 중"
+                                    else -> "${distance.toInt()}m"
+                                },
+                                color = Color(0xFF1447B8),
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)
+                            )
+                        }
+                        Box {
+                            Surface(
+                                color = Color(0xFF172033),
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.clickable { showMenu = true }
+                            ) {
+                                Text(
+                                    text = "메뉴",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 9.dp)
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showMenu,
+                                onDismissRequest = { showMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            if (state.celebrationEnabled) {
+                                                "이미지 설정 · 켜짐 (${state.celebrationPhotoUris.size}장)"
+                                            } else {
+                                                "이미지 설정"
+                                            }
+                                        )
+                                    },
+                                    onClick = {
+                                        showMenu = false
+                                        showImageSettings = true
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("로그아웃") },
+                                    onClick = {
+                                        showMenu = false
+                                        onLogout()
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                shape = RoundedCornerShape(30.dp),
+                color = Color.White,
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE4EBF5))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 18.dp, vertical = 16.dp)
                 ) {
-                    Button(
-                        onClick = onCheckIn,
-                        enabled = canCheckIn,
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 54.dp),
-                        shape = RoundedCornerShape(22.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1463FF))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        if (state.submittingAttendance && effectiveAttendanceStatus.checkedInAt == null) {
-                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                        } else {
-                            Text("출근하기")
-                        }
+                        AttendanceSummaryCard(
+                            modifier = Modifier.weight(1f),
+                            label = "출근",
+                            value = formatTime(effectiveAttendanceStatus.checkedInAt)
+                        )
+                        AttendanceSummaryCard(
+                            modifier = Modifier.weight(1f),
+                            label = "퇴근",
+                            value = formatTime(effectiveAttendanceStatus.checkedOutAt)
+                        )
                     }
-                    Button(
-                        onClick = onCheckOut,
-                        enabled = canCheckOut,
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 54.dp),
-                        shape = RoundedCornerShape(18.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF172033))
-                    ) {
-                        if (state.submittingAttendance && effectiveAttendanceStatus.checkedInAt != null) {
-                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                        } else {
-                            Text("퇴근하기")
-                        }
-                    }
-                }
 
-                if (distance != null) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "현재 거리: ${distance.toInt()}m",
-                        color = Color(0xFF1447B8)
-                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("공지사항", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
+                        TextButton(onClick = { showNoticeDialog = true }) {
+                            Text("전체 보기", color = Color(0xFF1463FF), fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp, max = 82.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        NoticeContent(
+                            noticeMessage = companySetting.noticeMessage,
+                            fallbackMessage = "등록된 공지사항이 없습니다."
+                        )
+                    }
+
+                    if (hasMockLocation) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color(0xFFFFE3E3)
+                        ) {
+                            Text(
+                                text = "위치 변조가 감지되어 출퇴근을 처리할 수 없습니다.",
+                                color = Color(0xFFC92A2A),
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Button(
+                            onClick = onCheckIn,
+                            enabled = canCheckIn,
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 56.dp),
+                            shape = RoundedCornerShape(20.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1463FF))
+                        ) {
+                            if (state.submittingAttendance && effectiveAttendanceStatus.checkedInAt == null) {
+                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                            } else {
+                                Text("출근하기", fontWeight = FontWeight.ExtraBold)
+                            }
+                        }
+                        Button(
+                            onClick = onCheckOut,
+                            enabled = canCheckOut,
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 56.dp),
+                            shape = RoundedCornerShape(20.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF172033))
+                        ) {
+                            if (state.submittingAttendance && effectiveAttendanceStatus.checkedInAt != null) {
+                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                            } else {
+                                Text("퇴근하기", fontWeight = FontWeight.ExtraBold)
+                            }
+                        }
+                    }
                 }
             }
         }
