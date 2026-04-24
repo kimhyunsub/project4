@@ -53,7 +53,8 @@ data class AttendanceActionRequestBody(
     val latitude: Double,
     val longitude: Double,
     val accuracyMeters: Double,
-    val capturedAt: String
+    val capturedAt: String,
+    val mockLocation: Boolean = false
 )
 
 data class CheckInResponseBody(
@@ -129,7 +130,8 @@ data class UiLocation(
     val latitude: Double,
     val longitude: Double,
     val accuracyMeters: Double,
-    val capturedAt: String
+    val capturedAt: String,
+    val mockLocation: Boolean = false
 )
 
 data class AppUiState(

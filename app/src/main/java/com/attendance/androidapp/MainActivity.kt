@@ -221,7 +221,8 @@ class AttendanceViewModel(
                     latitude = location.latitude,
                     longitude = location.longitude,
                     accuracyMeters = location.accuracy.toDouble(),
-                    capturedAt = Instant.ofEpochMilli(location.time.takeIf { it > 0 } ?: System.currentTimeMillis()).toString()
+                    capturedAt = Instant.ofEpochMilli(location.time.takeIf { it > 0 } ?: System.currentTimeMillis()).toString(),
+                    mockLocation = location.isMockLocation()
                 )
             )
         }
@@ -533,6 +534,13 @@ class AttendanceViewModel(
             else -> return
         }
 
+        if (requestLocation.mockLocation) {
+            _uiState.update {
+                it.copy(errorMessage = "위치 변조가 감지되어 출퇴근 처리할 수 없습니다.")
+            }
+            return
+        }
+
         viewModelScope.launch {
             _uiState.update { it.copy(submittingAttendance = true, errorMessage = null) }
             try {
@@ -541,7 +549,8 @@ class AttendanceViewModel(
                     latitude = requestLocation.latitude,
                     longitude = requestLocation.longitude,
                     accuracyMeters = requestLocation.accuracyMeters,
-                    capturedAt = requestLocation.capturedAt
+                    capturedAt = requestLocation.capturedAt,
+                    mockLocation = requestLocation.mockLocation
                 )
 
                 if (isCheckIn) {
@@ -684,6 +693,15 @@ private fun getDisplayLocationName(attendanceStatus: TodayAttendanceStatus, comp
         ?: companySetting.workplaceName
         ?: attendanceStatus.companyName
         ?: companySetting.companyName
+}
+
+private fun Location.isMockLocation(): Boolean {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        isMock
+    } else {
+        @Suppress("DEPRECATION")
+        isFromMockProvider
+    }
 }
 
 @Composable
@@ -1018,16 +1036,18 @@ private fun AttendanceScreen(
     val distance = currentLocation?.let {
         DistanceUtils.calculateMeters(it, companySetting.latitude, companySetting.longitude)
     }
+    val hasMockLocation = currentLocation?.mockLocation == true
 
     val canCheckIn = state.authSession != null &&
         effectiveAttendanceStatus.checkedInAt == null &&
         !state.submittingAttendance &&
         currentLocation != null &&
+        !hasMockLocation &&
         distance != null &&
         currentLocation.accuracyMeters <= 100 &&
         distance <= companySetting.allowedRadiusMeters
 
-    val canCheckOut = state.authSession != null && !state.submittingAttendance
+    val canCheckOut = state.authSession != null && !state.submittingAttendance && !hasMockLocation
     val displayLocationName = getDisplayLocationName(effectiveAttendanceStatus, companySetting)
 
     Column(
@@ -1291,6 +1311,22 @@ private fun AttendanceScreen(
                         noticeMessage = companySetting.noticeMessage,
                         fallbackMessage = "등록된 공지사항이 없습니다."
                     )
+                }
+
+                if (hasMockLocation) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFFFFE3E3)
+                    ) {
+                        Text(
+                            text = "위치 변조가 감지되어 출퇴근을 처리할 수 없습니다.",
+                            color = Color(0xFFC92A2A),
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
