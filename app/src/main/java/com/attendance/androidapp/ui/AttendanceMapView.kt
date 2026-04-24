@@ -13,7 +13,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import com.attendance.androidapp.model.CompanySetting
 import com.attendance.androidapp.model.UiLocation
-import kotlin.math.cos
 import org.osmdroid.util.BoundingBox
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
@@ -60,12 +59,6 @@ fun AttendanceMapView(
 
             val currentPoint = currentLocation?.let { GeoPoint(it.latitude, it.longitude) }
             val distanceToCompany = currentPoint?.distanceToAsDouble(companyPoint)
-            val shouldUseCompactCurrentLocation = distanceToCompany != null && distanceToCompany < 90.0
-            val displayedCurrentPoint = if (currentPoint != null && shouldUseCompactCurrentLocation) {
-                offsetGeoPoint(currentPoint, northMeters = 32.0, eastMeters = 48.0)
-            } else {
-                currentPoint
-            }
             val isInsideCompanyRadius = distanceToCompany == null || distanceToCompany <= companySetting.allowedRadiusMeters
 
             val companyMarker = Marker(mapView).apply {
@@ -84,9 +77,9 @@ fun AttendanceMapView(
             }
             mapView.overlays.add(radiusCircle)
 
-            if (displayedCurrentPoint != null) {
+            if (currentPoint != null) {
                 val currentMarker = Marker(mapView).apply {
-                    position = displayedCurrentPoint
+                    position = currentPoint
                     title = "현재 위치"
                     icon = createCurrentLocationMarkerDrawable(context)
                     setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
@@ -125,12 +118,6 @@ fun AttendanceMapView(
             mapView.invalidate()
         }
     )
-}
-
-private fun offsetGeoPoint(point: GeoPoint, northMeters: Double, eastMeters: Double): GeoPoint {
-    val latitudeOffset = northMeters / 111320.0
-    val longitudeOffset = eastMeters / (111320.0 * cos(Math.toRadians(point.latitude)))
-    return GeoPoint(point.latitude + latitudeOffset, point.longitude + longitudeOffset)
 }
 
 private fun createCompanyMarkerDrawable(context: Context): BitmapDrawable {

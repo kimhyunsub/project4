@@ -45,7 +45,7 @@ class LocationTracker(context: Context) {
 
         fusedLocationClient.lastLocation
             .addOnSuccessListener { location ->
-                if (location != null) {
+                if (location != null && location.isFreshEnoughForInitialDisplay()) {
                     clearTimeout()
                     onLocation(location)
                 }
@@ -74,5 +74,10 @@ class LocationTracker(context: Context) {
     private fun clearTimeout() {
         timeoutRunnable?.let(mainHandler::removeCallbacks)
         timeoutRunnable = null
+    }
+
+    private fun Location.isFreshEnoughForInitialDisplay(): Boolean {
+        val ageMillis = System.currentTimeMillis() - time
+        return ageMillis in 0..60_000L && accuracy <= 100f
     }
 }
