@@ -1423,7 +1423,11 @@ private fun CelebrationPhotoCard(
     photoUri: String,
     onClose: () -> Unit
 ) {
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .clickable(onClick = onClose)
+    ) {
         UriImage(
             uriString = photoUri,
             contentDescription = "출근 완료 이미지",
@@ -1451,15 +1455,13 @@ private fun CelebrationPhotoCard(
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.ExtraBold
             )
-        }
-        TextButton(
-            onClick = onClose,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(12.dp)
-                .background(Color(0x8A0F172A), RoundedCornerShape(999.dp))
-        ) {
-            Text("닫기", color = Color.White)
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "이미지를 터치하면 지도로 돌아갑니다.",
+                color = Color.White.copy(alpha = 0.86f),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold
+            )
         }
     }
 }
