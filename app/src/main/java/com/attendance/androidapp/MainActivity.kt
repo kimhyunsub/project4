@@ -64,7 +64,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -1020,6 +1022,8 @@ private fun AttendanceScreen(
     var showMenu by remember { mutableStateOf(false) }
     var showImageSettings by remember { mutableStateOf(false) }
     var showNoticeDialog by remember { mutableStateOf(false) }
+    var bottomLayerHeightPx by remember { mutableStateOf(0) }
+    val density = LocalDensity.current
     val currentLocation = state.currentLocation
     val companySetting = state.companySetting
     val nowInSeoul = LocalDateTime.now(ZoneId.of("Asia/Seoul"))
@@ -1049,6 +1053,13 @@ private fun AttendanceScreen(
 
     val canCheckOut = state.authSession != null && !state.submittingAttendance && !hasMockLocation
     val displayLocationName = getDisplayLocationName(effectiveAttendanceStatus, companySetting)
+    val distanceBadgeBottomPadding = with(density) {
+        if (bottomLayerHeightPx > 0) {
+            bottomLayerHeightPx.toDp() + 10.dp
+        } else {
+            305.dp
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -1230,7 +1241,7 @@ private fun AttendanceScreen(
             Surface(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .padding(start = 18.dp, bottom = 326.dp),
+                    .padding(start = 18.dp, bottom = distanceBadgeBottomPadding),
                 shape = RoundedCornerShape(999.dp),
                 color = Color(0xEFFFFFFF)
             ) {
@@ -1251,6 +1262,7 @@ private fun AttendanceScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
+                    .onSizeChanged { bottomLayerHeightPx = it.height }
                     .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
@@ -1342,17 +1354,14 @@ private fun AttendanceScreen(
                                 enabled = canCheckIn,
                                 modifier = Modifier
                                     .weight(1f)
-                                    .heightIn(min = 76.dp),
+                                    .heightIn(min = 58.dp),
                                 shape = RoundedCornerShape(24.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF49B85A))
                             ) {
                                 if (state.submittingAttendance && effectiveAttendanceStatus.checkedInAt == null) {
                                     CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                                 } else {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text("➜", color = Color.White, fontWeight = FontWeight.ExtraBold)
-                                        Text("출근하기", fontWeight = FontWeight.ExtraBold, color = Color.White)
-                                    }
+                                    Text("출근하기", fontWeight = FontWeight.ExtraBold, color = Color.White)
                                 }
                             }
                             Button(
@@ -1360,17 +1369,14 @@ private fun AttendanceScreen(
                                 enabled = canCheckOut,
                                 modifier = Modifier
                                     .weight(1f)
-                                    .heightIn(min = 76.dp),
+                                    .heightIn(min = 58.dp),
                                 shape = RoundedCornerShape(24.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF762B))
                             ) {
                                 if (state.submittingAttendance && effectiveAttendanceStatus.checkedInAt != null) {
                                     CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                                 } else {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text("↪", color = Color.White, fontWeight = FontWeight.ExtraBold)
-                                        Text("퇴근하기", fontWeight = FontWeight.ExtraBold, color = Color.White)
-                                    }
+                                    Text("퇴근하기", fontWeight = FontWeight.ExtraBold, color = Color.White)
                                 }
                             }
                         }
