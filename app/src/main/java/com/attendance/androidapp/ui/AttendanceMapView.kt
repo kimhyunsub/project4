@@ -13,7 +13,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import com.attendance.androidapp.model.CompanySetting
 import com.attendance.androidapp.model.UiLocation
-import org.osmdroid.util.BoundingBox
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
@@ -21,11 +20,7 @@ import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polygon
 
-private const val DEFAULT_MAP_ZOOM = 13.8
-private const val FALLBACK_MAP_ZOOM = 13.6
-private const val CLOSE_RANGE_MAP_ZOOM = 13.9
-private const val BOUNDING_BOX_PADDING_PX = 520
-private const val CLOSE_RANGE_DISTANCE_METERS = 300.0
+private const val MAP_ZOOM = 14.35
 
 @Composable
 fun AttendanceMapView(
@@ -51,7 +46,7 @@ fun AttendanceMapView(
                 setTileSource(TileSourceFactory.MAPNIK)
                 setMultiTouchControls(true)
                 setBuiltInZoomControls(false)
-                controller.setZoom(DEFAULT_MAP_ZOOM)
+                controller.setZoom(MAP_ZOOM)
             }
         },
         update = { mapView ->
@@ -89,27 +84,10 @@ fun AttendanceMapView(
             }
 
             if (currentPoint != null) {
-                if (distanceToCompany != null && distanceToCompany < CLOSE_RANGE_DISTANCE_METERS) {
-                    mapView.controller.setZoom(CLOSE_RANGE_MAP_ZOOM)
-                    mapView.controller.setCenter(currentPoint)
-                } else {
-                    runCatching {
-                        val boundingBox = BoundingBox.fromGeoPointsSafe(listOf(companyPoint, currentPoint))
-                        mapView.post {
-                            runCatching {
-                                mapView.zoomToBoundingBox(boundingBox, true, BOUNDING_BOX_PADDING_PX)
-                            }.onFailure {
-                                mapView.controller.setZoom(FALLBACK_MAP_ZOOM)
-                                mapView.controller.setCenter(currentPoint)
-                            }
-                        }
-                    }.onFailure {
-                        mapView.controller.setZoom(FALLBACK_MAP_ZOOM)
-                        mapView.controller.setCenter(currentPoint)
-                    }
-                }
+                mapView.controller.setZoom(MAP_ZOOM)
+                mapView.controller.setCenter(currentPoint)
             } else {
-                mapView.controller.setZoom(DEFAULT_MAP_ZOOM)
+                mapView.controller.setZoom(MAP_ZOOM)
                 mapView.controller.setCenter(companyPoint)
             }
 
