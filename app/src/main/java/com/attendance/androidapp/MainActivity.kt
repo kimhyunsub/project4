@@ -1029,7 +1029,6 @@ private fun AttendanceScreen(
 
     val canCheckOut = state.authSession != null && !state.submittingAttendance
     val displayLocationName = getDisplayLocationName(effectiveAttendanceStatus, companySetting)
-    val hasLongNotice = companySetting.noticeMessage.lines().count { it.trim().isNotEmpty() } > 3
 
     Column(
         modifier = Modifier
@@ -1277,17 +1276,15 @@ private fun AttendanceScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("공지사항", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    if (hasLongNotice) {
-                        TextButton(onClick = { showNoticeDialog = true }) {
-                            Text("전체 보기", color = Color(0xFF1463FF), fontWeight = FontWeight.Bold)
-                        }
+                    TextButton(onClick = { showNoticeDialog = true }) {
+                        Text("전체 보기", color = Color(0xFF1463FF), fontWeight = FontWeight.Bold)
                     }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 120.dp, max = 170.dp)
+                        .heightIn(min = 88.dp, max = 120.dp)
                         .verticalScroll(rememberScrollState())
                 ) {
                     NoticeContent(
