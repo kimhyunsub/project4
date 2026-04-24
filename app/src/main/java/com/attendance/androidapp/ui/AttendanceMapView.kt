@@ -25,9 +25,9 @@ import kotlin.math.max
 import kotlin.math.min
 
 private const val MAP_ZOOM = 14.35
-private const val LARGE_RADIUS_THRESHOLD_METERS = 1_000
-private const val RADIUS_VIEW_MARGIN = 1.15
-private const val RADIUS_BOUNDING_PADDING_PX = 56
+private const val MIN_VIEW_RADIUS_METERS = 600.0
+private const val RADIUS_VIEW_MARGIN = 1.2
+private const val MAP_BOUNDING_PADDING_PX = 96
 
 @Composable
 fun AttendanceMapView(
@@ -90,21 +90,21 @@ fun AttendanceMapView(
                 mapView.overlays.add(currentMarker)
             }
 
-            if (companySetting.allowedRadiusMeters >= LARGE_RADIUS_THRESHOLD_METERS) {
-                val radiusBoundingBox = createRadiusBoundingBox(
-                    center = companyPoint,
-                    radiusMeters = companySetting.allowedRadiusMeters * RADIUS_VIEW_MARGIN,
-                    currentPoint = currentPoint
-                )
-                mapView.post {
-                    mapView.zoomToBoundingBox(radiusBoundingBox, true, RADIUS_BOUNDING_PADDING_PX)
+            val viewportBoundingBox = createViewportBoundingBox(
+                center = companyPoint,
+                radiusMeters = max(
+                    MIN_VIEW_RADIUS_METERS,
+                    companySetting.allowedRadiusMeters.toDouble() * RADIUS_VIEW_MARGIN
+                ),
+                currentPoint = currentPoint
+            )
+            mapView.post {
+                runCatching {
+                    mapView.zoomToBoundingBox(viewportBoundingBox, true, MAP_BOUNDING_PADDING_PX)
+                }.onFailure {
+                    mapView.controller.setZoom(MAP_ZOOM)
+                    mapView.controller.setCenter(currentPoint ?: companyPoint)
                 }
-            } else if (currentPoint != null) {
-                mapView.controller.setZoom(MAP_ZOOM)
-                mapView.controller.setCenter(currentPoint)
-            } else {
-                mapView.controller.setZoom(MAP_ZOOM)
-                mapView.controller.setCenter(companyPoint)
             }
 
             mapView.invalidate()
@@ -112,7 +112,7 @@ fun AttendanceMapView(
     )
 }
 
-private fun createRadiusBoundingBox(
+private fun createViewportBoundingBox(
     center: GeoPoint,
     radiusMeters: Double,
     currentPoint: GeoPoint?
