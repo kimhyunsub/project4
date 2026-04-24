@@ -1261,14 +1261,14 @@ private fun AttendanceScreen(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 340.dp),
+                .heightIn(max = 300.dp),
             shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
             color = Color.White
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 20.dp)
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1284,7 +1284,7 @@ private fun AttendanceScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 88.dp, max = 120.dp)
+                        .heightIn(min = 64.dp, max = 92.dp)
                         .verticalScroll(rememberScrollState())
                 ) {
                     NoticeContent(
@@ -1293,35 +1293,45 @@ private fun AttendanceScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
-                Button(
-                    onClick = onCheckIn,
-                    enabled = canCheckIn,
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1463FF))
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    if (state.submittingAttendance && effectiveAttendanceStatus.checkedInAt == null) {
-                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                    } else {
-                        Text("출근하기")
+                    Button(
+                        onClick = onCheckIn,
+                        enabled = canCheckIn,
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 54.dp),
+                        shape = RoundedCornerShape(22.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1463FF))
+                    ) {
+                        if (state.submittingAttendance && effectiveAttendanceStatus.checkedInAt == null) {
+                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        } else {
+                            Text("출근하기")
+                        }
                     }
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-                Button(
-                    onClick = onCheckOut,
-                    enabled = canCheckOut,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F172A))
-                ) {
-                    if (state.submittingAttendance && effectiveAttendanceStatus.checkedInAt != null) {
-                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                    } else {
-                        Text("퇴근하기")
+                    Button(
+                        onClick = onCheckOut,
+                        enabled = canCheckOut,
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 54.dp),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF172033))
+                    ) {
+                        if (state.submittingAttendance && effectiveAttendanceStatus.checkedInAt != null) {
+                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        } else {
+                            Text("퇴근하기")
+                        }
                     }
                 }
 
                 if (distance != null) {
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = "현재 거리: ${distance.toInt()}m",
                         color = Color(0xFF1447B8)
