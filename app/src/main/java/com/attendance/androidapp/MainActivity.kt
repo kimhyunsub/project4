@@ -77,6 +77,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -108,6 +109,54 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeParseException
+
+private const val NOTICE_ACK_STORAGE_PREFIX = "attendance_notice_ack"
+
+private fun getNoticeHash(message: String): String {
+    val normalized = message.trim()
+    if (normalized.isBlank()) {
+        return ""
+    }
+
+    var hash = 0
+    normalized.forEach { character ->
+        hash = hash * 31 + character.code
+    }
+
+    return hash.toUInt().toString(36)
+}
+
+private fun getNoticeAckKey(employeeCode: String?, noticeMessage: String): String {
+    val noticeHash = getNoticeHash(noticeMessage)
+    val normalizedEmployeeCode = employeeCode?.trim().orEmpty()
+    if (noticeHash.isBlank() || normalizedEmployeeCode.isBlank()) {
+        return ""
+    }
+
+    return "$NOTICE_ACK_STORAGE_PREFIX:$normalizedEmployeeCode:$noticeHash"
+}
+
+private fun isNoticeAcknowledged(context: android.content.Context, ackKey: String): Boolean {
+    if (ackKey.isBlank()) {
+        return true
+    }
+
+    return context
+        .getSharedPreferences("attendance_android", android.content.Context.MODE_PRIVATE)
+        .getBoolean(ackKey, false)
+}
+
+private fun acknowledgeNotice(context: android.content.Context, ackKey: String) {
+    if (ackKey.isBlank()) {
+        return
+    }
+
+    context
+        .getSharedPreferences("attendance_android", android.content.Context.MODE_PRIVATE)
+        .edit()
+        .putBoolean(ackKey, true)
+        .apply()
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -1023,7 +1072,9 @@ private fun AttendanceScreen(
     var showImageSettings by remember { mutableStateOf(false) }
     var showNoticeDialog by remember { mutableStateOf(false) }
     var bottomLayerHeightPx by remember { mutableStateOf(0) }
+    var mapRecenterRequest by remember { mutableStateOf(0) }
     val density = LocalDensity.current
+    val context = LocalContext.current
     val currentLocation = state.currentLocation
     val companySetting = state.companySetting
     val nowInSeoul = LocalDateTime.now(ZoneId.of("Asia/Seoul"))
@@ -1053,6 +1104,9 @@ private fun AttendanceScreen(
 
     val canCheckOut = state.authSession != null && !state.submittingAttendance && !hasMockLocation
     val displayLocationName = getDisplayLocationName(effectiveAttendanceStatus, companySetting)
+    val noticeAckKey = remember(state.authSession?.user?.employeeCode, companySetting.noticeMessage) {
+        getNoticeAckKey(state.authSession?.user?.employeeCode, companySetting.noticeMessage)
+    }
     val distanceBadgeBottomPadding = with(density) {
         if (bottomLayerHeightPx > 0) {
             bottomLayerHeightPx.toDp() + 10.dp
@@ -1079,10 +1133,26 @@ private fun AttendanceScreen(
             )
         }
 
+        LaunchedEffect(state.authSession, noticeAckKey, companySetting.noticeMessage) {
+            if (
+                state.authSession != null &&
+                noticeAckKey.isNotBlank() &&
+                companySetting.noticeMessage.isNotBlank() &&
+                !isNoticeAcknowledged(context, noticeAckKey)
+            ) {
+                showNoticeDialog = true
+            }
+        }
+
+        fun closeNoticeDialog() {
+            acknowledgeNotice(context, noticeAckKey)
+            showNoticeDialog = false
+        }
+
         if (showNoticeDialog) {
             NoticeDialog(
                 noticeMessage = companySetting.noticeMessage,
-                onDismiss = { showNoticeDialog = false }
+                onDismiss = ::closeNoticeDialog
             )
         }
 
@@ -1170,10 +1240,11 @@ private fun AttendanceScreen(
                 else -> {
                     AttendanceMapView(
                         modifier = Modifier.fillMaxSize(),
-                        context = LocalContext.current,
+                        context = context,
                         companySetting = companySetting,
                         currentLocation = currentLocation,
-                        displayLocationName = displayLocationName
+                        displayLocationName = displayLocationName,
+                        recenterRequest = mapRecenterRequest
                     )
                 }
             }
@@ -1245,17 +1316,32 @@ private fun AttendanceScreen(
                 shape = RoundedCornerShape(999.dp),
                 color = Color(0xEFFFFFFF)
             ) {
-                Text(
-                    text = when {
-                        BuildConfig.DEMO_MODE && distance == null -> "현재 거리 DEMO"
-                        BuildConfig.DEMO_MODE -> "현재 거리 DEMO ${distance?.toInt()}m"
-                        distance == null -> "현재 거리 확인 중"
-                        else -> "현재 거리 ${distance.toInt()}m"
-                    },
-                    color = Color(0xFF10213A),
-                    fontWeight = FontWeight.ExtraBold,
-                    modifier = Modifier.padding(horizontal = 15.dp, vertical = 10.dp)
-                )
+                Row(
+                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    Text(
+                        text = "⌖",
+                        color = Color(0xFF0F9D94),
+                        fontWeight = FontWeight.ExtraBold,
+                        modifier = Modifier
+                            .clickable(enabled = currentLocation != null) {
+                                mapRecenterRequest += 1
+                            }
+                            .padding(horizontal = 2.dp)
+                    )
+                    Text(
+                        text = when {
+                            BuildConfig.DEMO_MODE && distance == null -> "현재 거리 DEMO"
+                            BuildConfig.DEMO_MODE -> "현재 거리 DEMO ${distance?.toInt()}m"
+                            distance == null -> "현재 거리 확인 중"
+                            else -> "현재 거리 ${distance.toInt()}m"
+                        },
+                        color = Color(0xFF10213A),
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
             }
 
             Column(
@@ -1596,28 +1682,77 @@ private fun NoticeDialog(
     noticeMessage: String,
     onDismiss: () -> Unit
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("공지사항 전체 보기") },
-        text = {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 180.dp, max = 420.dp)
-                    .verticalScroll(rememberScrollState())
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(30.dp),
+            color = Color.White,
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0))
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp)
             ) {
-                NoticeContent(
-                    noticeMessage = noticeMessage,
-                    fallbackMessage = "등록된 공지사항이 없습니다."
+                Box(
+                    modifier = Modifier
+                        .size(width = 48.dp, height = 5.dp)
+                        .background(Color(0xFF14B8A6), RoundedCornerShape(999.dp))
                 )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("닫기")
+                Spacer(modifier = Modifier.height(14.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "NOTICE",
+                            color = Color(0xFF14B8A6),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                        Text(
+                            text = "공지사항",
+                            color = Color(0xFF10213A),
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+                    Surface(
+                        color = Color(0xFF172033),
+                        shape = RoundedCornerShape(999.dp),
+                        modifier = Modifier.clickable { onDismiss() }
+                    ) {
+                        Text(
+                            text = "확인",
+                            color = Color.White,
+                            fontWeight = FontWeight.ExtraBold,
+                            modifier = Modifier.padding(horizontal = 17.dp, vertical = 10.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(14.dp))
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 180.dp, max = 420.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color(0xFFF8FAFC)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 14.dp, vertical = 12.dp)
+                    ) {
+                        NoticeContent(
+                            noticeMessage = noticeMessage,
+                            fallbackMessage = "등록된 공지사항이 없습니다."
+                        )
+                    }
+                }
             }
         }
-    )
+    }
 }
 
 @Composable

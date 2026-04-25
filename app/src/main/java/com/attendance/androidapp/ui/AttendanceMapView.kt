@@ -35,7 +35,8 @@ fun AttendanceMapView(
     context: Context,
     companySetting: CompanySetting,
     currentLocation: UiLocation?,
-    displayLocationName: String
+    displayLocationName: String,
+    recenterRequest: Int = 0
 ) {
     DisposableEffect(context) {
         Configuration.getInstance().userAgentValue = context.packageName
@@ -57,6 +58,7 @@ fun AttendanceMapView(
             }
         },
         update = { mapView ->
+            val recenterSignal = recenterRequest
             val companyPoint = GeoPoint(companySetting.latitude, companySetting.longitude)
             mapView.overlays.clear()
 
@@ -100,6 +102,7 @@ fun AttendanceMapView(
             )
             mapView.post {
                 runCatching {
+                    recenterSignal.hashCode()
                     mapView.zoomToBoundingBox(viewportBoundingBox, true, MAP_BOUNDING_PADDING_PX)
                 }.onFailure {
                     mapView.controller.setZoom(MAP_ZOOM)
