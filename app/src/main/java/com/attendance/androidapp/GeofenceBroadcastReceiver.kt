@@ -3,7 +3,6 @@ package com.attendance.androidapp
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -14,6 +13,9 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofencingEvent
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 const val ACTION_CONFIRM_GEOFENCE_CHECK_IN = "com.attendance.androidapp.CONFIRM_GEOFENCE_CHECK_IN"
 
@@ -28,33 +30,34 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             return
         }
 
-        showCheckInPrompt(context)
+        val pendingResult = goAsync()
+        CoroutineScope(Dispatchers.IO).launch {
+            val result = runCatching { AutoCheckInWorker.tryAutoCheckIn(context) }
+                .getOrElse { AutoCheckInResult.Failed("자동 출근 처리에 실패했습니다.") }
+
+            showAutoCheckInResult(context, result)
+            pendingResult.finish()
+        }
     }
 
-    private fun showCheckInPrompt(context: Context) {
+    private fun showAutoCheckInResult(context: Context, result: AutoCheckInResult) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             return
         }
 
-        val notificationIntent = Intent(context, MainActivity::class.java).apply {
-            action = ACTION_CONFIRM_GEOFENCE_CHECK_IN
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            7302,
-            notificationIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
         ensureNotificationChannel(context)
+
+        val (title, message) = when (result) {
+            is AutoCheckInResult.CheckedIn -> "자동 출근 완료" to result.message
+            is AutoCheckInResult.Skipped -> "자동 출근 미처리" to result.reason
+            is AutoCheckInResult.Failed -> "자동 출근 실패" to result.message
+        }
 
         val notification = NotificationCompat.Builder(context, CHECK_IN_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_map)
-            .setContentTitle("사업장에 도착했나요?")
-            .setContentText("눌러서 출근 처리를 진행하세요.")
-            .setContentIntent(pendingIntent)
+            .setContentTitle(title)
+            .setContentText(message)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()

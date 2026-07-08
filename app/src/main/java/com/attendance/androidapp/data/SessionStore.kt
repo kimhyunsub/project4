@@ -59,10 +59,19 @@ class SessionStore(context: Context) {
         preferences.edit().putString(KEY_CELEBRATION_SETTINGS, gson.toJson(settings)).apply()
     }
 
+    fun markAutoCheckInAttempt(date: String) {
+        preferences.edit().putString(KEY_AUTO_CHECK_IN_ATTEMPT_DATE, date).apply()
+    }
+
+    fun hasAutoCheckInAttempted(date: String): Boolean {
+        return preferences.getString(KEY_AUTO_CHECK_IN_ATTEMPT_DATE, "") == date
+    }
+
     companion object {
         private const val KEY_AUTH_SESSION = "auth_session"
         private const val KEY_DEVICE_ID = "device_id"
         private const val KEY_SAVED_EMPLOYEE_CODE = "saved_employee_code"
         private const val KEY_CELEBRATION_SETTINGS = "celebration_settings"
+        private const val KEY_AUTO_CHECK_IN_ATTEMPT_DATE = "auto_check_in_attempt_date"
     }
 }

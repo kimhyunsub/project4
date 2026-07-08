@@ -50,7 +50,7 @@ object AttendanceGeofenceRegistrar {
         companySetting: CompanySetting,
         pendingIntent: PendingIntent
     ) {
-        val radiusMeters = companySetting.allowedRadiusMeters.coerceAtLeast(100).toFloat()
+        val radiusMeters = companySetting.allowedRadiusMeters.coerceAtLeast(30).toFloat()
         val geofence = Geofence.Builder()
             .setRequestId(WORKPLACE_GEOFENCE_ID)
             .setCircularRegion(companySetting.latitude, companySetting.longitude, radiusMeters)
@@ -59,7 +59,7 @@ object AttendanceGeofenceRegistrar {
             .build()
 
         val request = GeofencingRequest.Builder()
-            .setInitialTrigger(0)
+            .setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER)
             .addGeofence(geofence)
             .build()
 
