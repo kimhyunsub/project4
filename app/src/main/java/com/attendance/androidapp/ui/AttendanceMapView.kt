@@ -102,8 +102,12 @@ fun AttendanceMapView(
             )
             mapView.post {
                 runCatching {
-                    recenterSignal.hashCode()
-                    mapView.zoomToBoundingBox(viewportBoundingBox, true, MAP_BOUNDING_PADDING_PX)
+                    if (recenterSignal > 0 && currentPoint != null) {
+                        mapView.controller.setZoom(MAP_ZOOM)
+                        mapView.controller.animateTo(currentPoint)
+                    } else {
+                        mapView.zoomToBoundingBox(viewportBoundingBox, true, MAP_BOUNDING_PADDING_PX)
+                    }
                 }.onFailure {
                     mapView.controller.setZoom(MAP_ZOOM)
                     mapView.controller.setCenter(currentPoint ?: companyPoint)

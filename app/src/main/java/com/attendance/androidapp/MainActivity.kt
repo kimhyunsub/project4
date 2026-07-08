@@ -159,9 +159,12 @@ private fun acknowledgeNotice(context: android.content.Context, ackKey: String) 
 }
 
 class MainActivity : ComponentActivity() {
+    private val geofenceCheckInRequests = MutableStateFlow(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        handleIntent(intent)
 
         val sessionStore = SessionStore(applicationContext)
         val api = AttendanceApi.create()
@@ -178,9 +181,24 @@ class MainActivity : ComponentActivity() {
                     color = Color(0xFFEEF3FB)
                 ) {
                     val viewModel: AttendanceViewModel = androidx.lifecycle.viewmodel.compose.viewModel(factory = viewModelFactory)
-                    AttendanceApp(viewModel = viewModel)
+                    AttendanceApp(
+                        viewModel = viewModel,
+                        geofenceCheckInRequests = geofenceCheckInRequests
+                    )
                 }
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        if (intent?.action == ACTION_CONFIRM_GEOFENCE_CHECK_IN) {
+            geofenceCheckInRequests.update { it + 1 }
         }
     }
 
@@ -210,6 +228,7 @@ class AttendanceViewModel(
     private val sessionStore: SessionStore,
     private val deviceName: String
 ) : ViewModel() {
+    private var pendingGeofenceCheckIn = false
     private val savedEmployeeCode = sessionStore.loadSavedEmployeeCode()
     private val savedCelebrationSettings = sessionStore.loadCelebrationSettings()
     private val _uiState = MutableStateFlow(
@@ -276,6 +295,10 @@ class AttendanceViewModel(
                     mockLocation = location.isMockLocation()
                 )
             )
+        }
+        if (pendingGeofenceCheckIn) {
+            pendingGeofenceCheckIn = false
+            checkIn()
         }
     }
 
@@ -523,6 +546,28 @@ class AttendanceViewModel(
         submitAttendanceAction(isCheckIn = true)
     }
 
+    fun requestCheckInFromGeofenceNotification() {
+        val state = _uiState.value
+        when {
+            state.authSession == null -> {
+                _uiState.update { it.copy(errorMessage = "로그인 후 출근 처리를 진행해 주세요.") }
+            }
+            state.attendanceStatus.checkedInAt != null -> {
+                _uiState.update { it.copy(errorMessage = "이미 출근 처리되어 있습니다.") }
+            }
+            state.currentLocation == null -> {
+                pendingGeofenceCheckIn = true
+                _uiState.update {
+                    it.copy(
+                        loadingLocation = true,
+                        errorMessage = "현재 위치 확인 후 출근 처리를 진행합니다."
+                    )
+                }
+            }
+            else -> checkIn()
+        }
+    }
+
     fun requestCheckOut() {
         _uiState.update { it.copy(showCheckOutConfirm = true) }
     }
@@ -756,8 +801,12 @@ private fun Location.isMockLocation(): Boolean {
 }
 
 @Composable
-private fun AttendanceApp(viewModel: AttendanceViewModel) {
+private fun AttendanceApp(
+    viewModel: AttendanceViewModel,
+    geofenceCheckInRequests: StateFlow<Int>
+) {
     val uiState by viewModel.uiState.collectAsState()
+    val geofenceCheckInRequestCount by geofenceCheckInRequests.collectAsState()
     val context = LocalContext.current
     val locationTracker = remember { LocationTracker(context) }
 
@@ -783,10 +832,28 @@ private fun AttendanceApp(viewModel: AttendanceViewModel) {
         viewModel.updateLocationPermission(granted)
     }
 
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { }
+
+    val backgroundLocationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { }
+
     val hasLocationPermission = ContextCompat.checkSelfPermission(
         context,
         Manifest.permission.ACCESS_FINE_LOCATION
     ) == PackageManager.PERMISSION_GRANTED
+    val hasBackgroundLocationPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+        ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_BACKGROUND_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+    val hasNotificationPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+        ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
 
     LaunchedEffect(hasLocationPermission) {
         viewModel.updateLocationPermission(hasLocationPermission)
@@ -797,6 +864,48 @@ private fun AttendanceApp(viewModel: AttendanceViewModel) {
             uiState.authSession?.user?.passwordChangeRequired != true &&
             !uiState.locationPermissionGranted) {
             permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+    }
+
+    LaunchedEffect(uiState.authSession != null, hasLocationPermission, hasBackgroundLocationPermission) {
+        if (uiState.authSession != null &&
+            uiState.authSession?.user?.passwordChangeRequired != true &&
+            hasLocationPermission &&
+            !hasBackgroundLocationPermission &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            backgroundLocationPermissionLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+        }
+    }
+
+    LaunchedEffect(uiState.authSession != null, hasNotificationPermission) {
+        if (uiState.authSession != null &&
+            uiState.authSession?.user?.passwordChangeRequired != true &&
+            !hasNotificationPermission &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    LaunchedEffect(
+        uiState.authSession,
+        uiState.authSession?.user?.passwordChangeRequired,
+        uiState.companySetting.latitude,
+        uiState.companySetting.longitude,
+        uiState.companySetting.allowedRadiusMeters,
+        hasLocationPermission,
+        hasBackgroundLocationPermission
+    ) {
+        if (uiState.authSession != null &&
+            uiState.authSession?.user?.passwordChangeRequired != true &&
+            hasLocationPermission &&
+            hasBackgroundLocationPermission) {
+            AttendanceGeofenceRegistrar.refreshWorkplaceGeofence(context, uiState.companySetting)
+        }
+    }
+
+    LaunchedEffect(geofenceCheckInRequestCount) {
+        if (geofenceCheckInRequestCount > 0) {
+            viewModel.requestCheckInFromGeofenceNotification()
         }
     }
 
